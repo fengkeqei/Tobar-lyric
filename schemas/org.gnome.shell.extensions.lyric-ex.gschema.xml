@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.gnome.shell.extensions.lyric-ex"
+          path="/org/gnome/shell/extensions/lyric-ex/">
+    <key name="local-directories" type="as">
+      <default>['~/Music/Lyrics']</default>
+      <summary>本地歌词目录</summary>
+      <description>按顺序搜索的本地歌词目录。每行一个目录，也可以使用波浪号表示用户主目录。</description>
+    </key>
+    <key name="prefer-local-lyrics" type="b">
+      <default>false</default>
+      <summary>优先使用本地歌词</summary>
+      <description>关闭时默认先请求在线歌词，在线不可用时再回退到本地歌词。</description>
+    </key>
+    <key name="online-fallback" type="b">
+      <default>true</default>
+      <summary>启用在线歌词回退</summary>
+      <description>没有找到本地歌词时，使用在线歌词接口。</description>
+    </key>
+    <key name="enable-controls" type="b">
+      <default>true</default>
+      <summary>启用播放控制按钮</summary>
+      <description>悬停歌词时显示上一曲、播放/暂停和下一曲按钮。</description>
+    </key>
+    <key name="online-endpoint" type="s">
+      <default>'https://api.lyrics.ovh/v1'</default>
+      <summary>旧版本在线接口地址</summary>
+      <description>为旧版本配置保留的兼容项，当前版本使用多个固定在线歌词源。</description>
+    </key>
+    <key name="online-providers" type="as">
+      <default>['netease', 'qqmusic', 'kugou', 'lrclib', 'lyrics-ovh']</default>
+      <summary>在线歌词源顺序</summary>
+      <description>按列表顺序尝试在线歌词源。歌词源不可用时自动尝试下一个。</description>
+    </key>
+    <key name="online-disabled-providers" type="as">
+      <default>[]</default>
+      <summary>已关闭的在线歌词源</summary>
+      <description>列表中的歌词源不会被请求。</description>
+    </key>
+    <key name="font-size" type="i">
+      <default>13</default>
+      <range min="9" max="24"/>
+      <summary>歌词字号</summary>
+      <description>调整顶部栏歌词的显示字号。</description>
+    </key>
+    <key name="panel-box" type="s">
+      <default>'center'</default>
+      <choices>
+        <choice value='left'/>
+        <choice value='center'/>
+        <choice value='right'/>
+      </choices>
+      <summary>顶部栏区域</summary>
+      <description>选择歌词显示在顶部栏左侧、中间或右侧。</description>
+    </key>
+    <key name="panel-position" type="i">
+      <default>0</default>
+      <range min="0" max="20"/>
+      <summary>区域内位置</summary>
+      <description>调整歌词在所选顶部栏区域中的顺序。</description>
+    </key>
+    <key name="panel-offset-x" type="i">
+      <default>0</default>
+      <range min="-100" max="100"/>
+      <summary>横向微调</summary>
+      <description>以像素为单位微调歌词整体的水平位置。</description>
+    </key>
+    <key name="panel-offset-y" type="i">
+      <default>0</default>
+      <range min="-20" max="20"/>
+      <summary>纵向微调</summary>
+      <description>以像素为单位微调歌词整体的垂直位置。</description>
+    </key>
+  </schema>
+</schemalist>

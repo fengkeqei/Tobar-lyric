@@ -1,0 +1,32 @@
+.lyric-ex-box {
+    min-width: 190px;
+    max-width: 360px;
+    padding: 0 6px;
+}
+
+.lyric-ex-label {
+    min-width: 178px;
+    padding: 0 2px;
+    font-size: 0.9em;
+}
+
+.lyric-ex-controls {
+    min-width: 178px;
+    padding: 0 2px;
+}
+
+.lyric-ex-button-box {
+    spacing: 4px;
+}
+
+.lyric-ex-button {
+    width: 28px;
+    height: 24px;
+    padding: 0;
+    border-radius: 5px;
+}
+
+.lyric-ex-button:hover,
+.lyric-ex-button:focus {
+    background-color: rgba(255, 255, 255, 0.12);
+}
