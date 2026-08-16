@@ -1,6 +1,6 @@
 # Lyric Ex
 
-一个适配 GNOME Shell 50 的Flyme状态栏风味顶部栏歌词扩展。
+一个适配 GNOME Shell 50 的仿Flyme状态栏歌词风味顶部栏歌词扩展。
 
 ## 功能
 
