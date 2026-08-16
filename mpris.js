@@ -31,6 +31,23 @@ function asNumber(value) {
     return Number.isFinite(number) ? number : 0;
 }
 
+const TRACK_IDENTITY_FIELDS = [
+    'busName',
+    'trackId',
+    'title',
+    'artist',
+    'album',
+];
+
+export function sameTrackIdentity(left, right) {
+    if (!left || !right)
+        return left === right;
+
+    return TRACK_IDENTITY_FIELDS.every(field =>
+        String(left[field] ?? '') === String(right[field] ?? '')
+    );
+}
+
 function unpackMetadata(value) {
     const unpacked = unpack(value) ?? {};
     const metadata = {};
@@ -115,11 +132,22 @@ export class MprisController {
         if (this._current.status !== 'Playing')
             this._refreshCurrentPosition();
 
-        const base = this._current.position / 1_000_000;
-        if (this._current.status !== 'Playing')
+        return this._positionAt(GLib.get_monotonic_time()) / 1_000_000;
+    }
+
+    _positionAt(timestamp) {
+        const current = this._current;
+        if (!current)
+            return 0;
+
+        const base = asNumber(current.position);
+        if (current.status !== 'Playing')
             return base;
 
-        return base + (GLib.get_monotonic_time() - this._current.positionTimestamp) / 1_000_000;
+        return base + Math.max(
+            0,
+            timestamp - current.positionTimestamp
+        );
     }
 
     _refreshCurrentPosition() {
@@ -284,27 +312,23 @@ export class MprisController {
         const paused = snapshots.find(snapshot => snapshot.status === 'Paused');
         const next = playing ?? paused ?? null;
         const previous = this._current;
+        const now = GLib.get_monotonic_time();
 
-        const samePlayingTrack = next && previous &&
-            next.busName === previous.busName &&
-            next.trackId === previous.trackId &&
-            next.status === 'Playing' &&
-            previous.status === 'Playing';
-        if (samePlayingTrack) {
-            next.positionTimestamp = previous.positionTimestamp;
-            next.position = previous.position;
+        if (sameTrackIdentity(next, previous)) {
+            next.position = previous.status === 'Playing'
+                ? this._positionAt(now)
+                : previous.position;
+            next.positionTimestamp = now;
         }
 
-        const currentChanged =
-            next?.busName !== this._current?.busName ||
-            next?.trackId !== this._current?.trackId ||
-            next?.title !== this._current?.title ||
-            next?.artist !== this._current?.artist ||
-            next?.album !== this._current?.album ||
-            next?.status !== this._current?.status ||
-            next?.canGoNext !== this._current?.canGoNext ||
-            next?.canGoPrevious !== this._current?.canGoPrevious ||
-            next?.canPlay !== this._current?.canPlay;
+        const trackChanged =
+            Boolean(next) !== Boolean(previous) ||
+            !sameTrackIdentity(next, previous);
+        const currentChanged = trackChanged ||
+            next?.status !== previous?.status ||
+            next?.canGoNext !== previous?.canGoNext ||
+            next?.canGoPrevious !== previous?.canGoPrevious ||
+            next?.canPlay !== previous?.canPlay;
 
         if (currentChanged) {
             this._current = next;

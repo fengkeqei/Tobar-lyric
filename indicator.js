@@ -421,11 +421,11 @@ export class LyricIndicator extends PanelMenu.Button {
     }
 
     _updateLyricLine(force = false) {
-        if (!this._snapshot)
+        if (!this._snapshot || !this._document)
             return;
 
         const position = this._controller.getCurrentPositionSeconds();
-        const line = this._document?.getLineAt(position) || '♪';
+        const line = this._document.getLineAt(position);
         if (!force && line === this._currentLine)
             return;
 
@@ -433,13 +433,16 @@ export class LyricIndicator extends PanelMenu.Button {
     }
 
     _setLyricText(text) {
-        const value = String(text || '♪');
+        const value = String(text ?? '');
         if (value === this._currentLine)
             return;
 
         this._currentLine = value;
         this._cancelMarquee();
         this._label.text = value;
+        if (!value)
+            return;
+
         this._label.opacity = 0;
         this._label.translation_y = 4;
         this._label.ease({
