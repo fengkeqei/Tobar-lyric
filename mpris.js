@@ -18,7 +18,7 @@ function unpack(value) {
 
 function asString(value) {
     if (Array.isArray(value))
-        return String(value[0] ?? '');
+        return value.map(item => String(item ?? '')).filter(Boolean).join(' ');
     return String(value ?? '');
 }
 
@@ -314,7 +314,7 @@ export class MprisController {
         const previous = this._current;
         const now = GLib.get_monotonic_time();
 
-        if (sameTrackIdentity(next, previous)) {
+        if (next && previous && sameTrackIdentity(next, previous)) {
             next.position = previous.status === 'Playing'
                 ? this._positionAt(now)
                 : previous.position;

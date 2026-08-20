@@ -3,6 +3,7 @@ import GLib from 'gi://GLib';
 
 function cleanText(value) {
     return String(value ?? '')
+        .replace(/^\uFEFF/, '')
         .replace(/\r/g, '')
         .replace(/\u0000/g, '')
         .trim();
@@ -39,7 +40,22 @@ function textFromContents(contents) {
 function readFile(file) {
     try {
         const [ok, contents] = file.load_contents(null);
-        return ok ? textFromContents(contents) : '';
+        if (!ok)
+            return '';
+
+        const utf8 = textFromContents(contents);
+        if (!utf8.includes('\uFFFD') && !utf8.includes('\u0000'))
+            return utf8;
+
+        const bytes = contents instanceof Uint8Array
+            ? contents
+            : new Uint8Array(contents);
+        if (bytes.length >= 2 && bytes[0] === 0xff && bytes[1] === 0xfe)
+            return new TextDecoder('utf-16le').decode(bytes);
+        if (bytes.length >= 2 && bytes[0] === 0xfe && bytes[1] === 0xff)
+            return new TextDecoder('utf-16be').decode(bytes);
+
+        return utf8;
     } catch (_error) {
         return '';
     }
@@ -58,11 +74,7 @@ export function findEmbeddedLyrics(snapshot) {
     if (!embedded)
         return null;
 
-    const document = embedded.includes('[')
-        ? LyricDocument.fromLrc(embedded, 'embedded')
-        : LyricDocument.fromPlain(embedded, 'embedded');
-
-    return document.lines.length > 0 ? document : null;
+    return parseLyricsText(embedded, 'embedded');
 }
 
 export class LyricDocument {
@@ -97,26 +109,40 @@ export class LyricDocument {
     static fromLrc(text, source = 'local') {
         const lines = [];
         const metadata = {};
-        const timestampPattern = /\[(\d+):(\d+(?:[.,]\d+)?)\]/g;
+        const rawLines = String(text).replace(/^\uFEFF/, '').split('\n');
+        const timestampPattern =
+            /\[(\d+):(\d{1,2})(?:[.,](\d{1,3}))?\]/g;
 
-        for (const rawLine of String(text).split('\n')) {
+        for (const rawLine of rawLines) {
+            const tag = rawLine.match(/^\s*\[([a-z]+):([^\]]*)\]\s*$/i);
+            if (tag)
+                metadata[tag[1].toLowerCase()] = cleanText(tag[2]);
+        }
+
+        const offset = Number(metadata.offset ?? 0) / 1000;
+        for (const rawLine of rawLines) {
             const timestamps = [...rawLine.matchAll(timestampPattern)];
-            const lyricText = cleanText(rawLine.replace(/\[[^\]]+\]/g, ''));
-
-            if (timestamps.length === 0) {
-                const tag = rawLine.match(/^\[([a-z]+):([^\]]*)\]$/i);
-                if (tag)
-                    metadata[tag[1].toLowerCase()] = cleanText(tag[2]);
+            if (timestamps.length === 0)
                 continue;
-            }
 
+            const lyricText = cleanText(rawLine.replace(timestampPattern, ''));
             if (!lyricText)
                 continue;
 
-            for (const [, minute, second] of timestamps) {
-                const seconds = Number(minute) * 60 + Number(second.replace(',', '.'));
-                const offset = Number(metadata.offset ?? 0) / 1000;
-                lines.push({time: Math.max(0, seconds + offset), text: lyricText});
+            for (const [, minute, second, fraction = '0'] of timestamps) {
+                const fractionSeconds = Number(
+                    `0.${String(fraction).padEnd(3, '0')}`
+                );
+                const seconds = Number(minute) * 60 +
+                    Number(second) +
+                    fractionSeconds;
+                if (!Number.isFinite(seconds))
+                    continue;
+
+                lines.push({
+                    time: Math.max(0, seconds + offset),
+                    text: lyricText,
+                });
             }
         }
 
@@ -137,15 +163,37 @@ export class LyricDocument {
     }
 }
 
+const LRC_TIMESTAMP_PATTERN = /\[\d+:\d{1,2}(?:[.,]\d{1,3})?\]/;
+const LRC_METADATA_PATTERN = /^\s*\[[a-z]+:[^\]]*\]\s*$/im;
+
+export function isLrcText(text) {
+    const value = String(text ?? '');
+    return LRC_TIMESTAMP_PATTERN.test(value) ||
+        LRC_METADATA_PATTERN.test(value);
+}
+
+export function parseLyricsText(text, source = 'local', synced = false) {
+    const value = String(text ?? '').trim();
+    if (!value)
+        return null;
+
+    const document = synced || isLrcText(value)
+        ? LyricDocument.fromLrc(value, source)
+        : LyricDocument.fromPlain(value, source);
+    return document.lines.length > 0 ? document : null;
+}
+
 export function findLocalLyrics(snapshot, settings) {
     const metadata = snapshot?.metadata ?? {};
     const artist = getArtist(metadata);
     const title = getTitle(metadata);
     let trackFile = null;
 
-    if (snapshot?.url?.startsWith('file://')) {
+    if (snapshot?.url) {
         try {
-            trackFile = Gio.File.new_for_uri(snapshot.url);
+            trackFile = snapshot.url.startsWith('/')
+                ? Gio.File.new_for_path(snapshot.url)
+                : Gio.File.new_for_uri(snapshot.url);
         } catch (_error) {
             trackFile = null;
         }
@@ -176,8 +224,12 @@ export function findLocalLyrics(snapshot, settings) {
 
     for (const candidate of candidates) {
         const text = readFile(candidate);
-        if (text)
-            return LyricDocument.fromLrc(text, 'local');
+        if (!text)
+            continue;
+
+        const document = parseLyricsText(text, 'local');
+        if (document?.lines.length > 0)
+            return document;
     }
 
     return null;

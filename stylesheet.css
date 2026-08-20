@@ -1,3 +1,7 @@
+.lyric-ex-surface {
+    border-radius: 7px;
+}
+
 .lyric-ex-box {
     min-width: 190px;
     max-width: 360px;

@@ -22,6 +22,11 @@
       <summary>启用播放控制按钮</summary>
       <description>悬停歌词时显示上一曲、播放/暂停和下一曲按钮。</description>
     </key>
+    <key name="enable-player-background" type="b">
+      <default>false</default>
+      <summary>旧版本兼容设置</summary>
+      <description>为旧版本配置保留的兼容项，当前版本不再使用。</description>
+    </key>
     <key name="online-endpoint" type="s">
       <default>'https://api.lyrics.ovh/v1'</default>
       <summary>旧版本在线接口地址</summary>

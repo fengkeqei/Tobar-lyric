@@ -33,11 +33,18 @@ export class LyricIndicator extends PanelMenu.Button {
         this._hideControlsId = 0;
         this._controlsEnabled = true;
 
+        this._surface = new St.Widget({
+            style_class: 'lyric-ex-surface',
+            clip_to_allocation: true,
+            layout_manager: new Clutter.BinLayout(),
+        });
+        this.add_child(this._surface);
+
         this._box = new St.BoxLayout({
             style_class: 'lyric-ex-box',
             y_align: Clutter.ActorAlign.CENTER,
         });
-        this.add_child(this._box);
+        this._surface.add_child(this._box);
         this.visible = false;
 
         this._viewport = new St.Widget({

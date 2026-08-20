@@ -1,7 +1,7 @@
 import GLib from 'gi://GLib';
 import Soup from 'gi://Soup?version=3.0';
 
-import {LyricDocument} from './lyrics.js';
+import {parseLyricsText} from './lyrics.js';
 
 export const PROVIDERS = [
     {id: 'netease', name: '网易云音乐', description: '国内带时间轴歌词源'},
@@ -13,6 +13,14 @@ export const PROVIDERS = [
 
 function encode(value) {
     return encodeURIComponent(String(value ?? ''));
+}
+
+function withQuery(base, parameters) {
+    const query = Object.entries(parameters)
+        .filter(([, value]) => value !== null && value !== undefined && value !== '')
+        .map(([key, value]) => `${encode(key)}=${encode(value)}`)
+        .join('&');
+    return query ? `${base}?${query}` : base;
 }
 
 function decodeBytes(bytes) {
@@ -44,14 +52,18 @@ function parseJson(text) {
 
 function artistText(snapshot) {
     const artist = snapshot.artist || snapshot.metadata?.['xesam:artist'] || '';
-    return Array.isArray(artist) ? String(artist[0] ?? '') : String(artist);
+    return Array.isArray(artist)
+        ? artist.map(value => String(value ?? '')).filter(Boolean).join(' ')
+        : String(artist);
 }
 
 function durationSeconds(snapshot) {
-    const length = Number(snapshot.metadata?.['mpris:length'] ?? snapshot.length ?? 0);
-    return Number.isFinite(length) && length > 0
+    const value = snapshot.metadata?.['mpris:length'] ?? snapshot.length ?? 0;
+    const length = Number(value?.deep_unpack?.() ?? value);
+    const seconds = Number.isFinite(length) && length > 0
         ? Math.round(length / 1_000_000)
         : 0;
+    return seconds >= 1 && seconds <= 3600 ? seconds : 0;
 }
 
 function simpleMatchText(value) {
@@ -115,32 +127,22 @@ function bestCandidate(items, snapshot, readCandidate) {
             continue;
 
         const artistScore = textScore(candidate.artist, artist);
-        if (artist && candidate.artist && artistScore === 0)
-            continue;
 
         const score = titleScore * 0.68 +
-            (artist ? artistScore * 0.25 : 0) +
-            durationScore(candidate.duration, duration) * 0.07;
+            (artist ? artistScore * 0.24 : 0) +
+            durationScore(candidate.duration, duration) * 0.08;
         scored.push({item, score});
     }
 
     scored.sort((left, right) => right.score - left.score);
     const best = scored[0];
-    return best && best.score >= (artist ? 0.68 : 0.55)
+    return best && best.score >= (artist ? 0.48 : 0.42)
         ? best.item
         : null;
 }
 
 function documentFromText(text, source, synced = true) {
-    const value = String(text ?? '').trim();
-    if (!value)
-        return null;
-
-    const document = synced || value.includes('[')
-        ? LyricDocument.fromLrc(value, source)
-        : LyricDocument.fromPlain(value, source);
-
-    return document.lines.length > 0 ? document : null;
+    return parseLyricsText(text, source, synced);
 }
 
 export class OnlineLyricsFetcher {
@@ -188,17 +190,21 @@ export class OnlineLyricsFetcher {
             return;
         }
 
-        handler(result => {
-            if (this._aborted)
-                return;
+        try {
+            handler(result => {
+                if (this._aborted)
+                    return;
 
-            if (result) {
-                this._onResult(result, providerId);
-                this._onComplete(providerId);
-            } else {
-                this._tryNext();
-            }
-        });
+                if (result) {
+                    this._onResult(result, providerId);
+                    this._onComplete(providerId);
+                } else {
+                    this._tryNext();
+                }
+            });
+        } catch (_error) {
+            this._tryNext();
+        }
     }
 
     _request(uri, callback, headers = {}) {
@@ -235,19 +241,65 @@ export class OnlineLyricsFetcher {
         const title = this._snapshot.title || '';
         const album = this._snapshot.album || '';
         const duration = durationSeconds(this._snapshot);
-        const uri = `https://lrclib.net/api/get?track_name=${encode(title)}&artist_name=${encode(artist)}&album_name=${encode(album)}&duration=${duration}`;
+        const uri = withQuery('https://lrclib.net/api/get', {
+            track_name: title,
+            artist_name: artist,
+            album_name: album,
+            duration: duration || null,
+        });
 
         this._request(uri, response => {
-            if (!response)
-                return callback(null);
+            const result = response ? parseJson(response.text) : null;
+            const synced = documentFromText(
+                result?.syncedLyrics,
+                'lrclib',
+                true
+            );
+            const plain = documentFromText(
+                result?.plainLyrics,
+                'lrclib',
+                false
+            );
+            if (synced || plain)
+                return callback(synced || plain);
 
-            const result = parseJson(response.text);
-            if (!result)
-                return callback(null);
+            const searchUri = withQuery('https://lrclib.net/api/search', {
+                track_name: title,
+                artist_name: artist,
+            });
+            this._request(searchUri, searchResponse => {
+                if (!searchResponse)
+                    return callback(null);
 
-            const synced = documentFromText(result.syncedLyrics, 'lrclib', true);
-            const plain = documentFromText(result.plainLyrics, 'lrclib', false);
-            callback(synced || plain);
+                const items = parseJson(searchResponse.text);
+                if (!Array.isArray(items))
+                    return callback(null);
+
+                const item = bestCandidate(
+                    items,
+                    this._snapshot,
+                    candidate => ({
+                        title: candidate.trackName || candidate.name,
+                        artist: candidate.artistName,
+                        album: candidate.albumName,
+                        duration: candidate.duration,
+                    })
+                );
+                if (!item)
+                    return callback(null);
+
+                const searchSynced = documentFromText(
+                    item.syncedLyrics,
+                    'lrclib',
+                    true
+                );
+                const searchPlain = documentFromText(
+                    item.plainLyrics,
+                    'lrclib',
+                    false
+                );
+                callback(searchSynced || searchPlain);
+            });
         });
     }
 
