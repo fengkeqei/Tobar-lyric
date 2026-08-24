@@ -42,6 +42,21 @@
       <summary>已关闭的在线歌词源</summary>
       <description>列表中的歌词源不会被请求。</description>
     </key>
+    <key name="player-app-filter-enabled" type="b">
+      <default>false</default>
+      <summary>启用播放器应用筛选</summary>
+      <description>开启后，只对设置为启用的 MPRIS 播放器搜索歌词；关闭时保持兼容，识别所有 MPRIS 播放器。</description>
+    </key>
+    <key name="enabled-player-apps" type="as">
+      <default>[]</default>
+      <summary>已启用的播放器应用</summary>
+      <description>应用筛选开启后，只有列表中的播放器应用会触发歌词搜索。</description>
+    </key>
+    <key name="player-app-order" type="as">
+      <default>[]</default>
+      <summary>播放器应用优先级</summary>
+      <description>多个播放器同时播放时，按列表顺序选择歌词来源；正在播放的应用优先于暂停的应用。</description>
+    </key>
     <key name="font-size" type="i">
       <default>13</default>
       <range min="9" max="24"/>

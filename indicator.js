@@ -150,6 +150,18 @@ export class LyricIndicator extends PanelMenu.Button {
                 'changed::online-fallback',
                 () => this._reloadCurrentLyrics()
             ),
+            this._settings.connect(
+                'changed::player-app-filter-enabled',
+                () => this._applyPlayerSelection()
+            ),
+            this._settings.connect(
+                'changed::enabled-player-apps',
+                () => this._applyPlayerSelection()
+            ),
+            this._settings.connect(
+                'changed::player-app-order',
+                () => this._applyPlayerSelection()
+            ),
         ];
         this._applyFontSize();
         this._applyPanelOffset();
@@ -159,6 +171,7 @@ export class LyricIndicator extends PanelMenu.Button {
         this.connect('leave-event', () => this._setHovered(false));
 
         this._controller = new MprisController(snapshot => this._setSnapshot(snapshot));
+        this._applyPlayerSelection();
         this._tickId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 100, () => {
             this._updateLyricLine();
             return GLib.SOURCE_CONTINUE;
@@ -224,6 +237,14 @@ export class LyricIndicator extends PanelMenu.Button {
         this._hovered = false;
         this._controls.visible = false;
         this._viewport.visible = true;
+    }
+
+    _applyPlayerSelection() {
+        this._controller?.setPlayerSelection({
+            filterEnabled: this._settings.get_boolean('player-app-filter-enabled'),
+            enabledApps: this._settings.get_strv('enabled-player-apps'),
+            appOrder: this._settings.get_strv('player-app-order'),
+        });
     }
 
     _handleControlPress(event) {

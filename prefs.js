@@ -4,6 +4,7 @@ import Gtk from 'gi://Gtk';
 
 import {ExtensionPreferences} from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
 
+import {MprisController} from './mpris.js';
 import {PROVIDERS} from './online.js';
 
 const PANEL_BOXES = [
@@ -28,6 +29,36 @@ function providerOrder(settings) {
 
 function providerById(id) {
     return PROVIDERS.find(provider => provider.id === id);
+}
+
+function playerAppOrder(settings, appIds) {
+    const configured = settings
+        .get_strv('player-app-order')
+        .filter((id, index, ids) => id && ids.indexOf(id) === index);
+    const result = [...configured];
+    for (const appId of appIds) {
+        if (!result.includes(appId))
+            result.push(appId);
+    }
+    return result;
+}
+
+function uniquePlayerApps(players) {
+    const apps = new Map();
+    for (const player of players) {
+        const current = apps.get(player.appId);
+        if (!current || player.status === 'Playing')
+            apps.set(player.appId, player);
+    }
+    return [...apps.values()];
+}
+
+function playerStatus(player) {
+    if (player.status === 'Playing')
+        return '正在播放';
+    if (player.status === 'Paused')
+        return '已暂停';
+    return player.status || '未播放';
 }
 
 function makeIconButton(iconName, tooltip, callback, sensitive = true) {
@@ -135,6 +166,125 @@ export default class LyricExPreferences extends ExtensionPreferences {
         );
         controlsGroup.add(controlsRow);
         page.add(controlsGroup);
+
+        const playerGroup = new Adw.PreferencesGroup({
+            title: '播放器识别',
+            description: 'MPRIS 会同时报告音乐和视频应用。开启筛选后，只识别下方启用的应用；多个应用同时播放时按应用优先级选择。',
+        });
+        const playerFilterRow = new Adw.SwitchRow({
+            title: '仅识别已启用的播放器',
+            subtitle: '关闭时识别所有 MPRIS 播放器',
+        });
+        settings.bind(
+            'player-app-filter-enabled',
+            playerFilterRow,
+            'active',
+            Gio.SettingsBindFlags.DEFAULT
+        );
+        playerGroup.add(playerFilterRow);
+
+        const playerRows = [];
+        let discoveredPlayers = [];
+        let discoveredSignature = '';
+        const rebuildPlayerRows = () => {
+            for (const row of playerRows)
+                playerGroup.remove(row);
+            playerRows.length = 0;
+
+            const apps = uniquePlayerApps(discoveredPlayers);
+            const appIds = apps.map(player => player.appId);
+            const order = playerAppOrder(settings, appIds);
+            const visibleOrder = order.filter(appId => appIds.includes(appId));
+            const appsById = new Map(apps.map(player => [player.appId, player]));
+            const enabled = new Set(settings.get_strv('enabled-player-apps'));
+
+            if (!visibleOrder.length) {
+                const emptyRow = new Adw.ActionRow({
+                    title: '未检测到播放器应用',
+                    subtitle: '启动音乐或视频应用后，这里会自动显示可识别的 MPRIS 应用',
+                });
+                playerRows.push(emptyRow);
+                playerGroup.add(emptyRow);
+                return;
+            }
+
+            for (const appId of visibleOrder) {
+                const player = appsById.get(appId);
+                const row = new Adw.ActionRow({
+                    title: player.identity || appId,
+                    subtitle: `${appId} · ${playerStatus(player)}`,
+                });
+                const enabledSwitch = new Gtk.Switch({
+                    active: enabled.has(appId),
+                    valign: Gtk.Align.CENTER,
+                });
+                enabledSwitch.set_tooltip_text('允许此应用触发歌词搜索');
+                enabledSwitch.connect('notify::active', () => {
+                    const nextEnabled = new Set(
+                        settings.get_strv('enabled-player-apps')
+                    );
+                    if (enabledSwitch.active)
+                        nextEnabled.add(appId);
+                    else
+                        nextEnabled.delete(appId);
+                    settings.set_strv(
+                        'enabled-player-apps',
+                        [...nextEnabled]
+                    );
+                });
+                row.add_suffix(enabledSwitch);
+
+                const rowIndex = visibleOrder.indexOf(appId);
+                row.add_suffix(makeIconButton(
+                    'go-up-symbolic',
+                    '提升应用优先级',
+                    () => {
+                        if (rowIndex === 0)
+                            return;
+                        const next = [...visibleOrder];
+                        [next[rowIndex - 1], next[rowIndex]] =
+                            [next[rowIndex], next[rowIndex - 1]];
+                        settings.set_strv('player-app-order', next);
+                    },
+                    rowIndex > 0
+                ));
+                row.add_suffix(makeIconButton(
+                    'go-down-symbolic',
+                    '降低应用优先级',
+                    () => {
+                        if (rowIndex >= visibleOrder.length - 1)
+                            return;
+                        const next = [...visibleOrder];
+                        [next[rowIndex], next[rowIndex + 1]] =
+                            [next[rowIndex + 1], next[rowIndex]];
+                        settings.set_strv('player-app-order', next);
+                    },
+                    rowIndex < visibleOrder.length - 1
+                ));
+                playerRows.push(row);
+                playerGroup.add(row);
+            }
+        };
+        const playerController = new MprisController(
+            () => {},
+            {
+                onPlayersChanged: players => {
+                    const apps = uniquePlayerApps(players);
+                    const signature = apps
+                        .map(player => `${player.appId}\u0000${player.identity}`)
+                        .sort()
+                        .join('\u0001');
+                    if (signature === discoveredSignature)
+                        return;
+                    discoveredSignature = signature;
+                    discoveredPlayers = players;
+                    rebuildPlayerRows();
+                },
+            }
+        );
+        page.connect('destroy', () => playerController.destroy());
+        rebuildPlayerRows();
+        page.add(playerGroup);
 
         const providerGroup = new Adw.PreferencesGroup({
             title: '在线源顺序',

@@ -2,6 +2,7 @@ import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 
 const PLAYER_INTERFACE = 'org.mpris.MediaPlayer2.Player';
+const ROOT_INTERFACE = 'org.mpris.MediaPlayer2';
 const OBJECT_PATH = '/org/mpris/MediaPlayer2';
 const DO_NOT_AUTO_START = Gio.DBusProxyFlags.DO_NOT_AUTO_START;
 
@@ -29,6 +30,61 @@ function asBoolean(value) {
 function asNumber(value) {
     const number = Number(value);
     return Number.isFinite(number) ? number : 0;
+}
+
+function normalizeAppId(value) {
+    return String(value ?? '')
+        .trim()
+        .toLowerCase()
+        .replace(/\.desktop$/, '');
+}
+
+export function playerAppId(busName, identity = '', desktopEntry = '') {
+    const stableId = normalizeAppId(desktopEntry) || normalizeAppId(identity);
+    if (stableId)
+        return stableId;
+
+    const prefix = 'org.mpris.MediaPlayer2.';
+    const suffix = String(busName ?? '').startsWith(prefix)
+        ? String(busName).slice(prefix.length)
+        : String(busName ?? '');
+    return suffix.replace(/\.instance[0-9]+$/, '') || suffix;
+}
+
+export function selectPreferredPlayer(
+    snapshots,
+    {filterEnabled = false, enabledApps = [], appOrder = []} = {}
+) {
+    const enabled = new Set(
+        enabledApps.map(appId => normalizeAppId(appId)).filter(Boolean)
+    );
+    const order = appOrder
+        .map(appId => normalizeAppId(appId))
+        .filter((appId, index, ids) => appId && ids.indexOf(appId) === index);
+    const rank = snapshot => {
+        const index = order.indexOf(normalizeAppId(snapshot.appId));
+        return index >= 0 ? index : order.length;
+    };
+    const allowed = [...snapshots]
+        .filter(snapshot =>
+            !filterEnabled || enabled.has(normalizeAppId(snapshot.appId))
+        )
+        .sort((left, right) => {
+            const rankDifference = rank(left) - rank(right);
+            if (rankDifference)
+                return rankDifference;
+            const appDifference = normalizeAppId(left.appId)
+                .localeCompare(normalizeAppId(right.appId));
+            if (appDifference)
+                return appDifference;
+            return String(left.busName ?? '').localeCompare(
+                String(right.busName ?? '')
+            );
+        });
+
+    return allowed.find(snapshot => snapshot.status === 'Playing') ??
+        allowed.find(snapshot => snapshot.status === 'Paused') ??
+        null;
 }
 
 const TRACK_IDENTITY_FIELDS = [
@@ -65,11 +121,15 @@ function unpackMetadata(value) {
 }
 
 export class MprisController {
-    constructor(onChanged) {
+    constructor(onChanged, options = {}) {
         this._onChanged = onChanged;
+        this._onPlayersChanged = options.onPlayersChanged ?? null;
         this._players = new Map();
         this._current = null;
         this._destroyed = false;
+        this._filterEnabled = false;
+        this._enabledApps = new Set();
+        this._appOrder = [];
         this._dbus = Gio.DBus.session;
         this._busProxy = Gio.DBusProxy.new_sync(
             this._dbus,
@@ -96,6 +156,21 @@ export class MprisController {
         this._discoverPlayers();
     }
 
+    setPlayerSelection({filterEnabled = false, enabledApps = [], appOrder = []} = {}) {
+        this._filterEnabled = Boolean(filterEnabled);
+        this._enabledApps = new Set(
+            enabledApps.map(appId => normalizeAppId(appId)).filter(Boolean)
+        );
+        this._appOrder = appOrder
+            .map(appId => normalizeAppId(appId))
+            .filter((appId, index, ids) => appId && ids.indexOf(appId) === index);
+        this._emitCurrent();
+    }
+
+    getPlayers() {
+        return this._getSnapshots();
+    }
+
     destroy() {
         this._destroyed = true;
         if (this._signalId) {
@@ -106,6 +181,7 @@ export class MprisController {
         for (const player of this._players.values()) {
             player.proxy.disconnect(player.propertySignalId);
             player.proxy.disconnect(player.signalId);
+            player.rootProxy?.disconnect(player.rootPropertySignalId);
         }
 
         this._players.clear();
@@ -236,6 +312,20 @@ export class MprisController {
                 PLAYER_INTERFACE,
                 null
             );
+            let rootProxy = null;
+            try {
+                rootProxy = Gio.DBusProxy.new_sync(
+                    this._dbus,
+                    DO_NOT_AUTO_START,
+                    null,
+                    busName,
+                    OBJECT_PATH,
+                    ROOT_INTERFACE,
+                    null
+                );
+            } catch (_error) {
+                // Older or incomplete MPRIS implementations may omit the root interface.
+            }
             const propertySignalId = proxy.connect(
                 'g-properties-changed',
                 () => this._emitCurrent()
@@ -258,7 +348,17 @@ export class MprisController {
                     this._onChanged(current);
                 }
             );
-            this._players.set(busName, {proxy, propertySignalId, signalId});
+            const rootPropertySignalId = rootProxy?.connect(
+                'g-properties-changed',
+                () => this._emitCurrent()
+            ) ?? 0;
+            this._players.set(busName, {
+                proxy,
+                propertySignalId,
+                signalId,
+                rootProxy,
+                rootPropertySignalId,
+            });
         } catch (_error) {
             // A player can disappear between ListNames and proxy creation.
         }
@@ -271,6 +371,7 @@ export class MprisController {
 
         player.proxy.disconnect(player.propertySignalId);
         player.proxy.disconnect(player.signalId);
+        player.rootProxy?.disconnect(player.rootPropertySignalId);
         this._players.delete(busName);
     }
 
@@ -282,6 +383,12 @@ export class MprisController {
         const canGoNextVariant = player.proxy.get_cached_property('CanGoNext');
         const canGoPreviousVariant = player.proxy.get_cached_property('CanGoPrevious');
         const canPlayVariant = player.proxy.get_cached_property('CanPlay');
+        const identity = asString(unpack(
+            player.rootProxy?.get_cached_property('Identity')
+        ));
+        const desktopEntry = asString(unpack(
+            player.rootProxy?.get_cached_property('DesktopEntry')
+        ));
 
         return {
             busName,
@@ -297,20 +404,30 @@ export class MprisController {
             canGoNext: asBoolean(unpack(canGoNextVariant)),
             canGoPrevious: asBoolean(unpack(canGoPreviousVariant)),
             canPlay: asBoolean(unpack(canPlayVariant)),
-            identity: asString(unpack(player.proxy.get_cached_property('Identity'))),
+            identity: identity || busName,
+            desktopEntry,
+            appId: playerAppId(busName, identity, desktopEntry),
             positionTimestamp: GLib.get_monotonic_time(),
         };
+    }
+
+    _getSnapshots() {
+        return [...this._players.entries()]
+            .map(([name, player]) => this._snapshot(name, player));
     }
 
     _emitCurrent() {
         if (this._destroyed)
             return;
 
-        const snapshots = [...this._players.entries()]
-            .map(([name, player]) => this._snapshot(name, player));
-        const playing = snapshots.find(snapshot => snapshot.status === 'Playing');
-        const paused = snapshots.find(snapshot => snapshot.status === 'Paused');
-        const next = playing ?? paused ?? null;
+        const snapshots = this._getSnapshots();
+        this._onPlayersChanged?.(snapshots);
+
+        const next = selectPreferredPlayer(snapshots, {
+            filterEnabled: this._filterEnabled,
+            enabledApps: [...this._enabledApps],
+            appOrder: this._appOrder,
+        });
         const previous = this._current;
         const now = GLib.get_monotonic_time();
 
