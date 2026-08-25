@@ -447,6 +447,16 @@ export default class LyricExPreferences extends ExtensionPreferences {
         );
         displayGroup.add(positionRow);
 
+        const lyricWidthRow = makeSpinRow(
+            settings,
+            'panel-lyric-width',
+            '歌词固定宽度',
+            '160 到 600 像素',
+            160,
+            600
+        );
+        displayGroup.add(lyricWidthRow);
+
         const offsetXRow = makeSpinRow(
             settings,
             'panel-offset-x',

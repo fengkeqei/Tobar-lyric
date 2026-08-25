@@ -32,7 +32,7 @@ gnome-extensions install --force lyric-ex@local.shell-extension.zip
 gnome-extensions enable lyric-ex@local
 ```
 
-安装后可以在 GNOME 扩展设置中配置本地歌词目录、在线源开关与顺序、播放器应用识别和优先级、正在播放卡片、歌词字号及顶部栏位置。
+安装后可以在 GNOME 扩展设置中配置本地歌词目录、在线源开关与顺序、播放器应用识别和优先级、正在播放卡片显示内容、歌词字号及顶部栏位置。
 
 ## 本地歌词命名
 

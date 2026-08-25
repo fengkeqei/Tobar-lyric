@@ -4,7 +4,6 @@ import GObject from 'gi://GObject';
 import Pango from 'gi://Pango';
 import St from 'gi://St';
 
-import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
@@ -39,7 +38,6 @@ export class LyricIndicator extends PanelMenu.Button {
         this._marqueeDelayId = 0;
         this._marqueePauseId = 0;
         this._hideControlsId = 0;
-        this._cardAlignId = 0;
         this._controlsEnabled = true;
 
         this._surface = new St.Widget({
@@ -60,6 +58,7 @@ export class LyricIndicator extends PanelMenu.Button {
             style_class: 'lyric-ex-viewport',
             clip_to_allocation: true,
             layout_manager: new Clutter.BinLayout(),
+            x_expand: true,
         });
         this._box.add_child(this._viewport);
 
@@ -80,6 +79,7 @@ export class LyricIndicator extends PanelMenu.Button {
             reactive: true,
             track_hover: true,
             layout_manager: new Clutter.BinLayout(),
+            x_expand: true,
         });
         this._box.add_child(this._controls);
 
@@ -173,10 +173,15 @@ export class LyricIndicator extends PanelMenu.Button {
             ),
             this._settings.connect(
                 'changed::card-width',
-                () => this._queueCardMenuAlignment()
+                () => this._syncCard()
+            ),
+            this._settings.connect(
+                'changed::panel-lyric-width',
+                () => this._applyLyricWidth()
             ),
         ];
         this._applyFontSize();
+        this._applyLyricWidth();
         this._applyPanelOffset();
         this._applyControlsEnabled();
 
@@ -209,6 +214,9 @@ export class LyricIndicator extends PanelMenu.Button {
             onSelectPlayer: busName => this._controller.selectPlayer(busName),
             getPosition: player => this._controller.getPositionMicros(player),
         });
+        // Let PopupMenu keep one native anchor for both open and close.
+        this.menu.sourceActor = this._box;
+        this.menu._boxPointer?.setSourceAlignment(0.0);
         this.menu.box.add_style_class_name('lyric-ex-card-menu');
         const cardItem = new PopupMenu.PopupBaseMenuItem({
             activate: false,
@@ -221,21 +229,9 @@ export class LyricIndicator extends PanelMenu.Button {
         this.menu.connect(
             'open-state-changed',
             (_menu, open) => {
-                this._card.setActive(open);
-                if (open) {
+                this._card?.setActive(open);
+                if (open && this._card)
                     this._syncCard();
-                    this._queueCardMenuAlignment();
-                } else {
-                    this.menu.actor.translation_x = 0;
-                }
-            }
-        );
-        this.connect(
-            'button-press-event',
-            (_actor, event) => {
-                if (event.get_button() === 1)
-                    this._alignCardMenu();
-                return Clutter.EVENT_PROPAGATE;
             }
         );
         this._applyPlayerSelection();
@@ -250,10 +246,6 @@ export class LyricIndicator extends PanelMenu.Button {
         this._requestId++;
         this._cancelMarquee();
         this._cancelControlsHide();
-        if (this._cardAlignId) {
-            GLib.source_remove(this._cardAlignId);
-            this._cardAlignId = 0;
-        }
 
         if (this._onlineFetcher)
             this._onlineFetcher.abort();
@@ -277,9 +269,20 @@ export class LyricIndicator extends PanelMenu.Button {
         super.destroy();
     }
 
+    vfunc_event(event) {
+        const type = event.type();
+        const isPress = type === Clutter.EventType.BUTTON_PRESS ||
+            type === Clutter.EventType.TOUCH_BEGIN;
+        if (isPress && this.menu) {
+            this.menu.toggle(true);
+            return Clutter.EVENT_STOP;
+        }
+        return Clutter.EVENT_PROPAGATE;
+    }
+
     _makeButton(iconName, accessibleName) {
         const button = new St.Button({
-            style_class: 'lyric-ex-control-button lyric-ex-button',
+            style_class: 'lyric-ex-button',
             reactive: false,
             can_focus: false,
             track_hover: true,
@@ -299,10 +302,18 @@ export class LyricIndicator extends PanelMenu.Button {
         this._label.set_style(`font-size: ${size}px;`);
     }
 
+    _applyLyricWidth() {
+        const width = Math.max(
+            160,
+            Math.min(600, this._settings.get_int('panel-lyric-width'))
+        );
+        this._box.style =
+            `width: ${width}px; min-width: ${width}px; max-width: ${width}px;`;
+    }
+
     _applyPanelOffset() {
         this.translation_x = this._settings.get_int('panel-offset-x');
         this.translation_y = this._settings.get_int('panel-offset-y');
-        this._queueCardMenuAlignment();
     }
 
     _applyControlsEnabled() {
@@ -336,50 +347,6 @@ export class LyricIndicator extends PanelMenu.Button {
 
     _syncCard() {
         this._card?.setState(this._snapshot, this._players);
-    }
-
-    _queueCardMenuAlignment() {
-        if (this._cardAlignId)
-            return;
-
-        this._cardAlignId = GLib.idle_add(
-            GLib.PRIORITY_DEFAULT_IDLE,
-            () => {
-                this._cardAlignId = 0;
-                this._alignCardMenu();
-                return GLib.SOURCE_REMOVE;
-            }
-        );
-    }
-
-    _alignCardMenu() {
-        if (!this.menu.actor ||
-            !this._box ||
-            this.menu.actor.width <= 1)
-            return;
-
-        const menuActor = this.menu.actor;
-        menuActor.translation_x = 0;
-
-        const [boxX] = this._box.get_transformed_position();
-        const padding = this._box.get_theme_node()?.get_padding(
-            St.Side.LEFT
-        ) ?? 6;
-        const anchorX = boxX + padding;
-        const [menuX] = menuActor.get_transformed_position();
-        const menuWidth = menuActor.width;
-        const monitor = Main.layoutManager.findMonitorForActor(this);
-        const left = monitor?.x ?? 8;
-        const right = monitor
-            ? monitor.x + monitor.width
-            : global.stage.width;
-        const margin = 8;
-        const desiredX = Math.max(
-            left + margin,
-            Math.min(anchorX, right - menuWidth - margin)
-        );
-
-        menuActor.translation_x = Math.round(desiredX - menuX);
     }
 
     _handleControlPress(event) {
@@ -651,14 +618,19 @@ export class LyricIndicator extends PanelMenu.Button {
 
                 const [, naturalWidth] =
                     this._label.clutter_text.get_preferred_width(-1);
-                const textWidth = Math.ceil(naturalWidth) + 4;
+                const textWidth = Math.ceil(Number(naturalWidth)) + 4;
                 const viewportWidth = Math.max(
-                    Math.floor(this._viewport.width),
+                    Math.floor(Number(this._viewport.width)),
                     1
                 );
+                if (!Number.isFinite(textWidth) ||
+                    !Number.isFinite(viewportWidth)) {
+                    this._scheduleMarquee(300);
+                    return GLib.SOURCE_REMOVE;
+                }
                 this._label.width = Math.max(textWidth, viewportWidth);
                 const overflow = Math.max(textWidth - viewportWidth, 0);
-                if (overflow <= 2)
+                if (!Number.isFinite(overflow) || overflow <= 2)
                     return GLib.SOURCE_REMOVE;
 
                 this._runMarquee(overflow, token);
@@ -668,7 +640,7 @@ export class LyricIndicator extends PanelMenu.Button {
     }
 
     _runMarquee(overflow, token) {
-        if (token !== this._marqueeToken)
+        if (token !== this._marqueeToken || !Number.isFinite(overflow))
             return;
 
         this._label.ease({

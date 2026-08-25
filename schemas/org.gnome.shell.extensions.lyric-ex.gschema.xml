@@ -82,6 +82,12 @@
       <summary>显示循环播放按钮</summary>
       <description>播放器支持循环播放时，在卡片中显示循环播放按钮。</description>
     </key>
+    <!-- Kept for already-loaded GNOME Shell modules; not exposed in preferences. -->
+    <key name="card-enabled" type="b">
+      <default>true</default>
+      <summary>兼容项</summary>
+      <description>仅用于兼容已加载的旧扩展模块。</description>
+    </key>
     <key name="seek-step-seconds" type="i">
       <default>10</default>
       <range min="1" max="60"/>
@@ -125,6 +131,12 @@
       <range min="0" max="20"/>
       <summary>区域内位置</summary>
       <description>调整歌词在所选顶部栏区域中的顺序。</description>
+    </key>
+    <key name="panel-lyric-width" type="i">
+      <default>240</default>
+      <range min="160" max="600"/>
+      <summary>歌词固定宽度</summary>
+      <description>固定状态栏歌词区域的宽度，过长歌词会在此区域内滚动显示。</description>
     </key>
     <key name="panel-offset-x" type="i">
       <default>0</default>

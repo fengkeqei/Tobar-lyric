@@ -3,19 +3,19 @@
 }
 
 .lyric-ex-box {
-    min-width: 190px;
-    max-width: 360px;
+    min-width: 160px;
+    max-width: 600px;
     padding: 0 6px;
 }
 
 .lyric-ex-label {
-    min-width: 178px;
+    min-width: 0;
     padding: 0 2px;
     font-size: 0.9em;
 }
 
 .lyric-ex-controls {
-    min-width: 178px;
+    min-width: 0;
     padding: 0 2px;
 }
 
@@ -31,10 +31,10 @@
 
 .lyric-ex-button {
     width: 28px;
-    height: 28px;
+    height: 24px;
     min-width: 28px;
-    min-height: 28px;
-    border-radius: 14px;
+    min-height: 24px;
+    padding: 0;
 }
 
 .lyric-ex-control-button:hover,
