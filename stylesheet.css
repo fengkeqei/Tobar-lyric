@@ -23,14 +23,148 @@
     spacing: 4px;
 }
 
-.lyric-ex-button {
-    width: 28px;
-    height: 24px;
+.lyric-ex-control-button {
     padding: 0;
-    border-radius: 5px;
+    background-color: rgba(128, 128, 128, 0.16);
+    border: 1px solid rgba(128, 128, 128, 0.24);
 }
 
-.lyric-ex-button:hover,
-.lyric-ex-button:focus {
-    background-color: rgba(255, 255, 255, 0.12);
+.lyric-ex-button {
+    width: 28px;
+    height: 28px;
+    min-width: 28px;
+    min-height: 28px;
+    border-radius: 14px;
+}
+
+.lyric-ex-control-button:hover,
+.lyric-ex-control-button:focus {
+    background-color: rgba(128, 128, 128, 0.28);
+}
+
+.lyric-ex-control-button:active {
+    background-color: rgba(128, 128, 128, 0.36);
+}
+
+.lyric-ex-card-menu {
+    padding: 0;
+}
+
+.lyric-ex-card-item {
+    padding: 0;
+}
+
+.lyric-ex-card {
+    min-width: 300px;
+    padding: 14px;
+    spacing: 10px;
+}
+
+.lyric-ex-card-header {
+    spacing: 12px;
+    min-height: 104px;
+}
+
+.lyric-ex-card-art {
+    background-color: rgba(128, 128, 128, 0.18);
+    border-radius: 18px;
+    padding: 0;
+}
+
+.lyric-ex-card-art:hover,
+.lyric-ex-card-art:focus {
+    background-color: rgba(128, 128, 128, 0.28);
+}
+
+.lyric-ex-card-text {
+    spacing: 3px;
+    min-width: 150px;
+}
+
+.lyric-ex-card-title {
+    font-weight: 700;
+}
+
+.lyric-ex-card-artist,
+.lyric-ex-card-album,
+.lyric-ex-card-app,
+.lyric-ex-card-time {
+    opacity: 0.72;
+}
+
+.lyric-ex-card-actions {
+    min-width: 60px;
+    spacing: 8px;
+}
+
+.lyric-ex-card-app {
+    max-width: 72px;
+    font-size: 0.8em;
+}
+
+.lyric-ex-card-tabs {
+    spacing: 5px;
+}
+
+.lyric-ex-card-tab {
+    padding: 4px 8px;
+    border-radius: 6px;
+    background-color: rgba(128, 128, 128, 0.12);
+}
+
+.lyric-ex-card-tab:hover,
+.lyric-ex-card-tab:focus {
+    background-color: rgba(128, 128, 128, 0.24);
+}
+
+.lyric-ex-card-seek-box {
+    spacing: 3px;
+}
+
+.lyric-ex-card-seek {
+    min-height: 18px;
+}
+
+.lyric-ex-card-time-box {
+    padding: 0 2px;
+}
+
+.lyric-ex-card-controls-row {
+    spacing: 8px;
+    min-height: 56px;
+    padding: 0 4px;
+}
+
+.lyric-ex-card-button,
+.lyric-ex-card-mode-button {
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+    min-height: 40px;
+    border-radius: 20px;
+}
+
+.lyric-ex-card-play-button {
+    width: 56px;
+    height: 56px;
+    min-width: 56px;
+    min-height: 56px;
+    border-radius: 28px;
+    background-color: rgba(128, 128, 128, 0.34);
+    border: 0;
+}
+
+.lyric-ex-card-play-button:hover,
+.lyric-ex-card-play-button:focus {
+    background-color: rgba(128, 128, 128, 0.46);
+}
+
+.lyric-ex-card-play-button:active {
+    background-color: rgba(128, 128, 128, 0.48);
+}
+
+.lyric-ex-card-mode-on {
+    color: -st-accent-color;
+    background-color: rgba(128, 128, 128, 0.34);
+    border-color: rgba(128, 128, 128, 0.42);
 }

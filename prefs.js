@@ -282,9 +282,64 @@ export default class LyricExPreferences extends ExtensionPreferences {
                 },
             }
         );
-        page.connect('destroy', () => playerController.destroy());
         rebuildPlayerRows();
         page.add(playerGroup);
+
+        const cardGroup = new Adw.PreferencesGroup({
+            title: '正在播放卡片',
+            description: '点击顶部栏歌词区域打开，显示封面、进度和播放控制。',
+        });
+        for (const [key, title, subtitle] of [
+            ['card-show-art', '显示专辑封面', '封面由播放器通过 MPRIS 提供'],
+            ['card-show-seek-bar', '显示进度条', '支持拖动调整播放位置'],
+            ['card-show-seek-buttons', '显示快进快退按钮', '按下方设置的秒数跳转'],
+            ['card-show-shuffle', '显示随机播放按钮', '仅对支持随机播放的应用显示'],
+            ['card-show-loop', '显示循环播放按钮', '仅对支持循环播放的应用显示'],
+        ]) {
+            const row = new Adw.SwitchRow({title, subtitle});
+            settings.bind(
+                key,
+                row,
+                'active',
+                Gio.SettingsBindFlags.DEFAULT
+            );
+            cardGroup.add(row);
+        }
+        cardGroup.add(makeSpinRow(
+            settings,
+            'seek-step-seconds',
+            '快进快退秒数',
+            '1 到 60 秒',
+            1,
+            60
+        ));
+        cardGroup.add(makeSpinRow(
+            settings,
+            'card-width',
+            '卡片宽度',
+            '300 到 560 像素',
+            300,
+            560
+        ));
+        const artSizeModel = Gtk.StringList.new(['小', '中', '大']);
+        const artSizeRow = new Adw.ComboRow({
+            title: '专辑封面尺寸',
+            model: artSizeModel,
+        });
+        const artSizes = ['small', 'medium', 'large'];
+        const syncArtSize = () => {
+            const selected = artSizes.indexOf(settings.get_string('card-art-size'));
+            artSizeRow.selected = selected >= 0 ? selected : 1;
+        };
+        syncArtSize();
+        artSizeRow.connect('notify::selected', () => {
+            const value = artSizes[artSizeRow.selected];
+            if (value)
+                settings.set_string('card-art-size', value);
+        });
+        settings.connect('changed::card-art-size', syncArtSize);
+        cardGroup.add(artSizeRow);
+        page.add(cardGroup);
 
         const providerGroup = new Adw.PreferencesGroup({
             title: '在线源顺序',

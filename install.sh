@@ -5,7 +5,7 @@ uuid="lyric-ex@local"
 target="${XDG_DATA_HOME:-$HOME/.local/share}/gnome-shell/extensions/$uuid"
 
 mkdir -p "$target"
-cp metadata.json extension.js indicator.js lyrics.js mpris.js online.js prefs.js stylesheet.css "$target/"
+cp metadata.json extension.js indicator.js lyrics.js mpris.js online.js prefs.js stylesheet.css art-cache.js now-playing-card.js "$target/"
 cp -r schemas "$target/"
 glib-compile-schemas "$target/schemas"
 

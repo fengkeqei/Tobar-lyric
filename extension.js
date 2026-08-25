@@ -37,7 +37,10 @@ export default class LyricExExtension extends Extension {
             return;
 
         this._indicator?.destroy();
-        this._indicator = new LyricIndicator(this._settings);
+        this._indicator = new LyricIndicator(
+            this._settings,
+            () => this.openPreferences()
+        );
 
         const configuredBox = this._settings.get_string('panel-box');
         const box = ['left', 'center', 'right'].includes(configuredBox)

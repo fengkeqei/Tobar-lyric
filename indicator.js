@@ -4,22 +4,30 @@ import GObject from 'gi://GObject';
 import Pango from 'gi://Pango';
 import St from 'gi://St';
 
+import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
+import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
+import {ArtCache} from './art-cache.js';
 import {findEmbeddedLyrics, findLocalLyrics} from './lyrics.js';
 import {OnlineLyricsFetcher} from './online.js';
 import {MprisController} from './mpris.js';
+import {NowPlayingCard} from './now-playing-card.js';
 
 export class LyricIndicator extends PanelMenu.Button {
     static {
         GObject.registerClass(this);
     }
 
-    constructor(settings) {
+    constructor(settings, openPreferences = null) {
         super(0.0, 'Lyric Ex', false);
 
         this._settings = settings;
+        this._openPreferences = openPreferences;
         this._snapshot = null;
+        this._players = [];
+        this._artCache = new ArtCache();
+        this._card = null;
         this._document = null;
         this._onlineFetcher = null;
         this._requestId = 0;
@@ -31,6 +39,7 @@ export class LyricIndicator extends PanelMenu.Button {
         this._marqueeDelayId = 0;
         this._marqueePauseId = 0;
         this._hideControlsId = 0;
+        this._cardAlignId = 0;
         this._controlsEnabled = true;
 
         this._surface = new St.Widget({
@@ -162,6 +171,10 @@ export class LyricIndicator extends PanelMenu.Button {
                 'changed::player-app-order',
                 () => this._applyPlayerSelection()
             ),
+            this._settings.connect(
+                'changed::card-width',
+                () => this._queueCardMenuAlignment()
+            ),
         ];
         this._applyFontSize();
         this._applyPanelOffset();
@@ -170,8 +183,63 @@ export class LyricIndicator extends PanelMenu.Button {
         this.connect('enter-event', () => this._setHovered(true));
         this.connect('leave-event', () => this._setHovered(false));
 
-        this._controller = new MprisController(snapshot => this._setSnapshot(snapshot));
+        this._controller = new MprisController(
+            snapshot => {
+                this._setSnapshot(snapshot);
+                this._syncCard();
+            },
+            {
+                onPlayersChanged: players => {
+                    this._players = players;
+                    this._syncCard();
+                },
+            }
+        );
+        this._card = new NowPlayingCard(this._settings, this._artCache, {
+            onOpenPreferences: () => this._openPreferences?.(),
+            onRaise: () => this._controller.raiseCurrent(),
+            onPrevious: () => this._controller.previous(),
+            onPlayPause: () => this._controller.playPause(),
+            onNext: () => this._controller.next(),
+            onSeek: seconds => this._controller.seek(seconds * 1_000_000),
+            onSetPosition: position =>
+                this._controller.setPosition(position),
+            onShuffle: shuffle => this._controller.setShuffle(shuffle),
+            onLoop: () => this._cycleLoop(),
+            onSelectPlayer: busName => this._controller.selectPlayer(busName),
+            getPosition: player => this._controller.getPositionMicros(player),
+        });
+        this.menu.box.add_style_class_name('lyric-ex-card-menu');
+        const cardItem = new PopupMenu.PopupBaseMenuItem({
+            activate: false,
+            reactive: false,
+            can_focus: false,
+            style_class: 'lyric-ex-card-item',
+        });
+        cardItem.add_child(this._card);
+        this.menu.addMenuItem(cardItem);
+        this.menu.connect(
+            'open-state-changed',
+            (_menu, open) => {
+                this._card.setActive(open);
+                if (open) {
+                    this._syncCard();
+                    this._queueCardMenuAlignment();
+                } else {
+                    this.menu.actor.translation_x = 0;
+                }
+            }
+        );
+        this.connect(
+            'button-press-event',
+            (_actor, event) => {
+                if (event.get_button() === 1)
+                    this._alignCardMenu();
+                return Clutter.EVENT_PROPAGATE;
+            }
+        );
         this._applyPlayerSelection();
+        this._syncCard();
         this._tickId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 100, () => {
             this._updateLyricLine();
             return GLib.SOURCE_CONTINUE;
@@ -182,10 +250,18 @@ export class LyricIndicator extends PanelMenu.Button {
         this._requestId++;
         this._cancelMarquee();
         this._cancelControlsHide();
+        if (this._cardAlignId) {
+            GLib.source_remove(this._cardAlignId);
+            this._cardAlignId = 0;
+        }
 
         if (this._onlineFetcher)
             this._onlineFetcher.abort();
         this._onlineFetcher = null;
+        this._card?.destroy();
+        this._card = null;
+        this._artCache?.destroy();
+        this._artCache = null;
 
         for (const signalId of this._settingsChangedIds ?? [])
             this._settings.disconnect(signalId);
@@ -203,16 +279,16 @@ export class LyricIndicator extends PanelMenu.Button {
 
     _makeButton(iconName, accessibleName) {
         const button = new St.Button({
-            style_class: 'lyric-ex-button',
+            style_class: 'lyric-ex-control-button lyric-ex-button',
             reactive: false,
             can_focus: false,
-            track_hover: false,
+            track_hover: true,
             button_mask: St.ButtonMask.ONE,
             accessible_name: accessibleName,
         });
         button._icon = new St.Icon({
             icon_name: iconName,
-            icon_size: 15,
+            icon_size: 18,
         });
         button.set_child(button._icon);
         return button;
@@ -226,6 +302,7 @@ export class LyricIndicator extends PanelMenu.Button {
     _applyPanelOffset() {
         this.translation_x = this._settings.get_int('panel-offset-x');
         this.translation_y = this._settings.get_int('panel-offset-y');
+        this._queueCardMenuAlignment();
     }
 
     _applyControlsEnabled() {
@@ -245,6 +322,64 @@ export class LyricIndicator extends PanelMenu.Button {
             enabledApps: this._settings.get_strv('enabled-player-apps'),
             appOrder: this._settings.get_strv('player-app-order'),
         });
+    }
+
+    _cycleLoop() {
+        const loopStatus = this._snapshot?.loopStatus;
+        const next = loopStatus === null || loopStatus === 'None'
+            ? 'Playlist'
+            : loopStatus === 'Playlist'
+                ? 'Track'
+                : 'None';
+        this._controller.setLoopStatus(next);
+    }
+
+    _syncCard() {
+        this._card?.setState(this._snapshot, this._players);
+    }
+
+    _queueCardMenuAlignment() {
+        if (this._cardAlignId)
+            return;
+
+        this._cardAlignId = GLib.idle_add(
+            GLib.PRIORITY_DEFAULT_IDLE,
+            () => {
+                this._cardAlignId = 0;
+                this._alignCardMenu();
+                return GLib.SOURCE_REMOVE;
+            }
+        );
+    }
+
+    _alignCardMenu() {
+        if (!this.menu.actor ||
+            !this._box ||
+            this.menu.actor.width <= 1)
+            return;
+
+        const menuActor = this.menu.actor;
+        menuActor.translation_x = 0;
+
+        const [boxX] = this._box.get_transformed_position();
+        const padding = this._box.get_theme_node()?.get_padding(
+            St.Side.LEFT
+        ) ?? 6;
+        const anchorX = boxX + padding;
+        const [menuX] = menuActor.get_transformed_position();
+        const menuWidth = menuActor.width;
+        const monitor = Main.layoutManager.findMonitorForActor(this);
+        const left = monitor?.x ?? 8;
+        const right = monitor
+            ? monitor.x + monitor.width
+            : global.stage.width;
+        const margin = 8;
+        const desiredX = Math.max(
+            left + margin,
+            Math.min(anchorX, right - menuWidth - margin)
+        );
+
+        menuActor.translation_x = Math.round(desiredX - menuX);
     }
 
     _handleControlPress(event) {

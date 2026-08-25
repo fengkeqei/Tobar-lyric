@@ -57,6 +57,53 @@
       <summary>播放器应用优先级</summary>
       <description>多个播放器同时播放时，按列表顺序选择歌词来源；正在播放的应用优先于暂停的应用。</description>
     </key>
+    <key name="card-show-art" type="b">
+      <default>true</default>
+      <summary>显示专辑封面</summary>
+      <description>在正在播放卡片中显示 MPRIS 播放器提供的专辑封面。</description>
+    </key>
+    <key name="card-show-seek-bar" type="b">
+      <default>true</default>
+      <summary>显示进度条</summary>
+      <description>在正在播放卡片中显示可拖动的播放进度条。</description>
+    </key>
+    <key name="card-show-seek-buttons" type="b">
+      <default>true</default>
+      <summary>显示快进快退按钮</summary>
+      <description>在正在播放卡片中显示按秒数跳转的快进和快退按钮。</description>
+    </key>
+    <key name="card-show-shuffle" type="b">
+      <default>true</default>
+      <summary>显示随机播放按钮</summary>
+      <description>播放器支持随机播放时，在卡片中显示随机播放按钮。</description>
+    </key>
+    <key name="card-show-loop" type="b">
+      <default>true</default>
+      <summary>显示循环播放按钮</summary>
+      <description>播放器支持循环播放时，在卡片中显示循环播放按钮。</description>
+    </key>
+    <key name="seek-step-seconds" type="i">
+      <default>10</default>
+      <range min="1" max="60"/>
+      <summary>快进快退秒数</summary>
+      <description>点击卡片快进或快退按钮时跳转的秒数。</description>
+    </key>
+    <key name="card-width" type="i">
+      <default>400</default>
+      <range min="300" max="560"/>
+      <summary>卡片宽度</summary>
+      <description>正在播放卡片的宽度。</description>
+    </key>
+    <key name="card-art-size" type="s">
+      <default>'medium'</default>
+      <choices>
+        <choice value='small'/>
+        <choice value='medium'/>
+        <choice value='large'/>
+      </choices>
+      <summary>专辑封面尺寸</summary>
+      <description>选择正在播放卡片中的专辑封面尺寸。</description>
+    </key>
     <key name="font-size" type="i">
       <default>13</default>
       <range min="9" max="24"/>

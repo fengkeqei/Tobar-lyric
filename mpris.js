@@ -3,6 +3,7 @@ import GLib from 'gi://GLib';
 
 const PLAYER_INTERFACE = 'org.mpris.MediaPlayer2.Player';
 const ROOT_INTERFACE = 'org.mpris.MediaPlayer2';
+const PROPERTIES_INTERFACE = 'org.freedesktop.DBus.Properties';
 const OBJECT_PATH = '/org/mpris/MediaPlayer2';
 const DO_NOT_AUTO_START = Gio.DBusProxyFlags.DO_NOT_AUTO_START;
 
@@ -30,6 +31,12 @@ function asBoolean(value) {
 function asNumber(value) {
     const number = Number(value);
     return Number.isFinite(number) ? number : 0;
+}
+
+function logError(error, context) {
+    if (error?.matches?.(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED))
+        return;
+    console.warn(`${context}: ${error?.message ?? error}`);
 }
 
 function normalizeAppId(value) {
@@ -126,6 +133,7 @@ export class MprisController {
         this._onPlayersChanged = options.onPlayersChanged ?? null;
         this._players = new Map();
         this._current = null;
+        this._selectedBusName = null;
         this._destroyed = false;
         this._filterEnabled = false;
         this._enabledApps = new Set();
@@ -171,6 +179,24 @@ export class MprisController {
         return this._getSnapshots();
     }
 
+    selectPlayer(busName) {
+        const player = this._getSnapshots().find(
+            snapshot => snapshot.busName === busName && this._isAllowed(snapshot)
+        );
+        if (!player)
+            return;
+
+        this._selectedBusName = busName;
+        this._emitCurrent();
+    }
+
+    clearSelectedPlayer() {
+        if (!this._selectedBusName)
+            return;
+        this._selectedBusName = null;
+        this._emitCurrent();
+    }
+
     destroy() {
         this._destroyed = true;
         if (this._signalId) {
@@ -186,6 +212,7 @@ export class MprisController {
 
         this._players.clear();
         this._current = null;
+        this._selectedBusName = null;
         this._onChanged(null);
     }
 
@@ -209,6 +236,16 @@ export class MprisController {
             this._refreshCurrentPosition();
 
         return this._positionAt(GLib.get_monotonic_time()) / 1_000_000;
+    }
+
+    getCurrentPositionMicros() {
+        if (!this._current)
+            return 0;
+
+        if (this._current.status !== 'Playing')
+            this._refreshCurrentPosition();
+
+        return this._positionAt(GLib.get_monotonic_time());
     }
 
     _positionAt(timestamp) {
@@ -257,6 +294,138 @@ export class MprisController {
                     proxy.call_finish(result);
                 } catch (error) {
                     logError(error, `Lyric Ex MPRIS ${method} failed`);
+                }
+            }
+        );
+    }
+
+    seek(offsetMicros) {
+        const player = this._current?.proxy;
+        if (!player || !this._current.canSeek)
+            return;
+
+        player.call(
+            'Seek',
+            new GLib.Variant('(x)', [Math.trunc(offsetMicros)]),
+            Gio.DBusCallFlags.NO_AUTO_START,
+            -1,
+            null,
+            (proxy, result) => {
+                try {
+                    proxy.call_finish(result);
+                } catch (error) {
+                    logError(error, 'Lyric Ex seek failed');
+                }
+            }
+        );
+    }
+
+    setPosition(positionMicros) {
+        const current = this._current;
+        if (!current || !current.canSeek)
+            return;
+
+        const trackId = current.trackId;
+        if (trackId && trackId.startsWith('/')) {
+            current.proxy.call(
+                'SetPosition',
+                new GLib.Variant('(ox)', [
+                    trackId,
+                    Math.max(0, Math.trunc(positionMicros)),
+                ]),
+                Gio.DBusCallFlags.NO_AUTO_START,
+                -1,
+                null,
+                (proxy, result) => {
+                    try {
+                        proxy.call_finish(result);
+                    } catch (error) {
+                        logError(error, 'Lyric Ex set position failed');
+                    }
+                }
+            );
+            return;
+        }
+
+        this.getPositionMicros(current).then(position =>
+            this.seek(Math.trunc(positionMicros) - position)
+        );
+    }
+
+    setShuffle(shuffle) {
+        this._setCurrentProperty(
+            'Shuffle',
+            new GLib.Variant('b', Boolean(shuffle))
+        );
+    }
+
+    setLoopStatus(status) {
+        this._setCurrentProperty(
+            'LoopStatus',
+            new GLib.Variant('s', String(status))
+        );
+    }
+
+    raiseCurrent() {
+        const rootProxy = this._current?.rootProxy;
+        if (!rootProxy || !this._current.canRaise)
+            return;
+
+        rootProxy.call(
+            'Raise',
+            null,
+            Gio.DBusCallFlags.NO_AUTO_START,
+            -1,
+            null,
+            (proxy, result) => {
+                try {
+                    proxy.call_finish(result);
+                } catch (error) {
+                    logError(error, 'Lyric Ex raise player failed');
+                }
+            }
+        );
+    }
+
+    getPositionMicros(snapshot = this._current) {
+        if (!snapshot?.propertiesProxy)
+            return Promise.resolve(snapshot?.position ?? 0);
+
+        return new Promise(resolve => {
+            snapshot.propertiesProxy.call(
+                'Get',
+                new GLib.Variant('(ss)', [PLAYER_INTERFACE, 'Position']),
+                Gio.DBusCallFlags.NO_AUTO_START,
+                -1,
+                null,
+                (proxy, result) => {
+                    try {
+                        const [value] = proxy.call_finish(result).deep_unpack();
+                        resolve(asNumber(value.deep_unpack()));
+                    } catch (_error) {
+                        resolve(snapshot.position ?? 0);
+                    }
+                }
+            );
+        });
+    }
+
+    _setCurrentProperty(name, value) {
+        const propertiesProxy = this._current?.propertiesProxy;
+        if (!propertiesProxy)
+            return;
+
+        propertiesProxy.call(
+            'Set',
+            new GLib.Variant('(ssv)', [PLAYER_INTERFACE, name, value]),
+            Gio.DBusCallFlags.NO_AUTO_START,
+            -1,
+            null,
+            (proxy, result) => {
+                try {
+                    proxy.call_finish(result);
+                } catch (error) {
+                    logError(error, `Lyric Ex set ${name} failed`);
                 }
             }
         );
@@ -326,6 +495,15 @@ export class MprisController {
             } catch (_error) {
                 // Older or incomplete MPRIS implementations may omit the root interface.
             }
+            const propertiesProxy = Gio.DBusProxy.new_sync(
+                this._dbus,
+                DO_NOT_AUTO_START,
+                null,
+                busName,
+                OBJECT_PATH,
+                PROPERTIES_INTERFACE,
+                null
+            );
             const propertySignalId = proxy.connect(
                 'g-properties-changed',
                 () => this._emitCurrent()
@@ -358,6 +536,7 @@ export class MprisController {
                 signalId,
                 rootProxy,
                 rootPropertySignalId,
+                propertiesProxy,
             });
         } catch (_error) {
             // A player can disappear between ListNames and proxy creation.
@@ -373,6 +552,8 @@ export class MprisController {
         player.proxy.disconnect(player.signalId);
         player.rootProxy?.disconnect(player.rootPropertySignalId);
         this._players.delete(busName);
+        if (this._selectedBusName === busName)
+            this._selectedBusName = null;
     }
 
     _snapshot(busName, player) {
@@ -383,6 +564,9 @@ export class MprisController {
         const canGoNextVariant = player.proxy.get_cached_property('CanGoNext');
         const canGoPreviousVariant = player.proxy.get_cached_property('CanGoPrevious');
         const canPlayVariant = player.proxy.get_cached_property('CanPlay');
+        const canSeekVariant = player.proxy.get_cached_property('CanSeek');
+        const shuffleVariant = player.proxy.get_cached_property('Shuffle');
+        const loopStatusVariant = player.proxy.get_cached_property('LoopStatus');
         const identity = asString(unpack(
             player.rootProxy?.get_cached_property('Identity')
         ));
@@ -399,14 +583,27 @@ export class MprisController {
             artist: asString(metadata['xesam:artist']),
             album: asString(metadata['xesam:album']),
             url: asString(metadata['xesam:url']),
+            artUrl: asString(metadata['mpris:artUrl']),
+            length: asNumber(metadata['mpris:length']),
             status: asString(unpack(statusVariant)),
             position: asNumber(unpack(positionVariant)),
             canGoNext: asBoolean(unpack(canGoNextVariant)),
             canGoPrevious: asBoolean(unpack(canGoPreviousVariant)),
             canPlay: asBoolean(unpack(canPlayVariant)),
+            canSeek: asBoolean(unpack(canSeekVariant)),
+            canShuffle: shuffleVariant !== null,
+            shuffle: shuffleVariant === null ? null : asBoolean(unpack(shuffleVariant)),
+            canLoop: loopStatusVariant !== null,
+            loopStatus: loopStatusVariant === null
+                ? null
+                : asString(unpack(loopStatusVariant)),
             identity: identity || busName,
             desktopEntry,
             appId: playerAppId(busName, identity, desktopEntry),
+            canRaise: asBoolean(unpack(
+                player.rootProxy?.get_cached_property('CanRaise')
+            )),
+            propertiesProxy: player.propertiesProxy,
             positionTimestamp: GLib.get_monotonic_time(),
         };
     }
@@ -416,16 +613,26 @@ export class MprisController {
             .map(([name, player]) => this._snapshot(name, player));
     }
 
+    _isAllowed(snapshot) {
+        return !this._filterEnabled ||
+            this._enabledApps.has(normalizeAppId(snapshot.appId));
+    }
+
     _emitCurrent() {
         if (this._destroyed)
             return;
 
         const snapshots = this._getSnapshots();
-        this._onPlayersChanged?.(snapshots);
+        const allowedSnapshots = snapshots.filter(snapshot => this._isAllowed(snapshot));
+        this._onPlayersChanged?.(allowedSnapshots);
 
-        const next = selectPreferredPlayer(snapshots, {
-            filterEnabled: this._filterEnabled,
-            enabledApps: [...this._enabledApps],
+        const selected = this._selectedBusName
+            ? allowedSnapshots.find(
+                snapshot => snapshot.busName === this._selectedBusName
+            )
+            : null;
+        const next = selected ?? selectPreferredPlayer(allowedSnapshots, {
+            filterEnabled: false,
             appOrder: this._appOrder,
         });
         const previous = this._current;
