@@ -39,6 +39,7 @@ export default class LyricExExtension extends Extension {
         this._indicator?.destroy();
         this._indicator = new LyricIndicator(
             this._settings,
+<<<<<<< HEAD
             () => {
                 try {
                     Promise.resolve(this.openPreferences()).catch(error =>
@@ -48,6 +49,9 @@ export default class LyricExExtension extends Extension {
                     console.warn(`Lyric Ex preferences: ${error?.message ?? error}`);
                 }
             }
+=======
+            () => this.openPreferences()
+>>>>>>> e680dc6197e44e4e0575d03e7b495160a7dbcf68
         );
 
         const configuredBox = this._settings.get_string('panel-box');

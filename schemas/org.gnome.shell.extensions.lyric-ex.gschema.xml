@@ -82,11 +82,14 @@
       <summary>显示循环播放按钮</summary>
       <description>播放器支持循环播放时，在卡片中显示循环播放按钮。</description>
     </key>
+<<<<<<< HEAD
     <key name="card-show-lyrics" type="b">
       <default>true</default>
       <summary>显示完整歌词页</summary>
       <description>在正在播放卡片中显示完整歌词展开按钮；展开后当前行高亮，点击歌词行可跳转播放位置。</description>
     </key>
+=======
+>>>>>>> e680dc6197e44e4e0575d03e7b495160a7dbcf68
     <!-- Kept for already-loaded GNOME Shell modules; not exposed in preferences. -->
     <key name="card-enabled" type="b">
       <default>true</default>
@@ -115,6 +118,7 @@
       <summary>专辑封面尺寸</summary>
       <description>选择正在播放卡片中的专辑封面尺寸。</description>
     </key>
+<<<<<<< HEAD
     <key name="karaoke-highlight" type="b">
       <default>true</default>
       <summary>逐字卡拉OK高亮</summary>
@@ -122,6 +126,11 @@
     </key>
     <key name="font-size" type="i">
       <default>13</default>      <range min="9" max="24"/>
+=======
+    <key name="font-size" type="i">
+      <default>13</default>
+      <range min="9" max="24"/>
+>>>>>>> e680dc6197e44e4e0575d03e7b495160a7dbcf68
       <summary>歌词字号</summary>
       <description>调整顶部栏歌词的显示字号。</description>
     </key>

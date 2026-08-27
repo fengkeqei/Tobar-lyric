@@ -145,6 +145,7 @@ function documentFromText(text, source, synced = true) {
     return parseLyricsText(text, source, synced);
 }
 
+<<<<<<< HEAD
 let _sharedSession = null;
 
 function sharedSession() {
@@ -155,13 +156,20 @@ function sharedSession() {
     return _sharedSession;
 }
 
+=======
+>>>>>>> e680dc6197e44e4e0575d03e7b495160a7dbcf68
 export class OnlineLyricsFetcher {
     constructor(snapshot, providerIds, onResult, onComplete) {
         this._snapshot = snapshot;
         this._providerIds = providerIds;
         this._onResult = onResult;
         this._onComplete = onComplete;
+<<<<<<< HEAD
         this._session = sharedSession();
+=======
+        this._session = new Soup.Session();
+        this._session.timeout = 8;
+>>>>>>> e680dc6197e44e4e0575d03e7b495160a7dbcf68
         this._providerIndex = 0;
         this._aborted = false;
     }
@@ -172,9 +180,14 @@ export class OnlineLyricsFetcher {
     }
 
     abort() {
+<<<<<<< HEAD
         // The session is shared across fetchers, so only detach; pending
         // responses are ignored via the _aborted flag.
         this._aborted = true;
+=======
+        this._aborted = true;
+        this._session.abort();
+>>>>>>> e680dc6197e44e4e0575d03e7b495160a7dbcf68
     }
 
     _tryNext() {

@@ -1,13 +1,20 @@
 import Clutter from 'gi://Clutter';
 import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
+<<<<<<< HEAD
+=======
+import Pango from 'gi://Pango';
+>>>>>>> e680dc6197e44e4e0575d03e7b495160a7dbcf68
 import St from 'gi://St';
 
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
 import {ArtCache} from './art-cache.js';
+<<<<<<< HEAD
 import {KaraokeLabel} from './karaoke.js';
+=======
+>>>>>>> e680dc6197e44e4e0575d03e7b495160a7dbcf68
 import {findEmbeddedLyrics, findLocalLyrics} from './lyrics.js';
 import {OnlineLyricsFetcher} from './online.js';
 import {MprisController} from './mpris.js';
@@ -62,7 +69,19 @@ export class LyricIndicator extends PanelMenu.Button {
         });
         this._box.add_child(this._viewport);
 
+<<<<<<< HEAD
         this._label = new KaraokeLabel('lyric-ex-label');
+=======
+        this._label = new St.Label({
+            text: '',
+            style_class: 'lyric-ex-label',
+            y_align: Clutter.ActorAlign.CENTER,
+        });
+        this._label.clutter_text.set({
+            ellipsize: Pango.EllipsizeMode.NONE,
+            line_wrap: false,
+        });
+>>>>>>> e680dc6197e44e4e0575d03e7b495160a7dbcf68
         this._viewport.add_child(this._label);
 
         this._controls = new St.Widget({
@@ -124,10 +143,13 @@ export class LyricIndicator extends PanelMenu.Button {
                 () => this._applyFontSize()
             ),
             this._settings.connect(
+<<<<<<< HEAD
                 'changed::karaoke-highlight',
                 () => this._applyKaraoke()
             ),
             this._settings.connect(
+=======
+>>>>>>> e680dc6197e44e4e0575d03e7b495160a7dbcf68
                 'changed::panel-offset-x',
                 () => this._applyPanelOffset()
             ),
@@ -180,7 +202,10 @@ export class LyricIndicator extends PanelMenu.Button {
         this._applyLyricWidth();
         this._applyPanelOffset();
         this._applyControlsEnabled();
+<<<<<<< HEAD
         this._applyKaraoke();
+=======
+>>>>>>> e680dc6197e44e4e0575d03e7b495160a7dbcf68
 
         this.connect('enter-event', () => this._setHovered(true));
         this.connect('leave-event', () => this._setHovered(false));
@@ -233,18 +258,22 @@ export class LyricIndicator extends PanelMenu.Button {
         );
         this._applyPlayerSelection();
         this._syncCard();
+<<<<<<< HEAD
     }
 
     _ensureTick() {
         if (this._tickId)
             return;
 
+=======
+>>>>>>> e680dc6197e44e4e0575d03e7b495160a7dbcf68
         this._tickId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 100, () => {
             this._updateLyricLine();
             return GLib.SOURCE_CONTINUE;
         });
     }
 
+<<<<<<< HEAD
     _stopTick() {
         if (!this._tickId)
             return;
@@ -253,6 +282,8 @@ export class LyricIndicator extends PanelMenu.Button {
         this._tickId = 0;
     }
 
+=======
+>>>>>>> e680dc6197e44e4e0575d03e7b495160a7dbcf68
     destroy() {
         this._requestId++;
         this._cancelMarquee();
@@ -310,6 +341,7 @@ export class LyricIndicator extends PanelMenu.Button {
 
     _applyFontSize() {
         const size = this._settings.get_int('font-size');
+<<<<<<< HEAD
         this._label.setFontSize(size);
     }
 
@@ -318,6 +350,9 @@ export class LyricIndicator extends PanelMenu.Button {
         this._label.setKaraokeEnabled(this._karaokeEnabled);
         if (this._snapshot && this._document)
             this._updateLyricLine(true);
+=======
+        this._label.set_style(`font-size: ${size}px;`);
+>>>>>>> e680dc6197e44e4e0575d03e7b495160a7dbcf68
     }
 
     _applyLyricWidth() {
@@ -463,10 +498,13 @@ export class LyricIndicator extends PanelMenu.Button {
             oldSnapshot.album !== snapshot.album;
         this._snapshot = snapshot;
         this.visible = true;
+<<<<<<< HEAD
         if (snapshot.status === 'Playing')
             this._ensureTick();
         else
             this._stopTick();
+=======
+>>>>>>> e680dc6197e44e4e0575d03e7b495160a7dbcf68
 
         this._previousButton.opacity = snapshot?.canGoPrevious ? 255 : 110;
         this._nextButton.opacity = snapshot?.canGoNext ? 255 : 110;
@@ -486,11 +524,17 @@ export class LyricIndicator extends PanelMenu.Button {
 
     _hideWhenIdle() {
         this._requestId++;
+<<<<<<< HEAD
         this._stopTick();
         this._snapshot = null;
         this._lyricsTrackKey = null;
         this._document = null;
         this._card?.setLyricDocument(null);
+=======
+        this._snapshot = null;
+        this._lyricsTrackKey = null;
+        this._document = null;
+>>>>>>> e680dc6197e44e4e0575d03e7b495160a7dbcf68
         this._currentLine = '';
         this._label.text = '';
         this._controls.visible = false;
@@ -505,7 +549,11 @@ export class LyricIndicator extends PanelMenu.Button {
         this.visible = false;
     }
 
+<<<<<<< HEAD
     async _loadLyrics(snapshot, force = false) {
+=======
+    _loadLyrics(snapshot, force = false) {
+>>>>>>> e680dc6197e44e4e0575d03e7b495160a7dbcf68
         const trackKey = [
             snapshot.busName,
             snapshot.trackId,
@@ -518,6 +566,11 @@ export class LyricIndicator extends PanelMenu.Button {
 
         this._lyricsTrackKey = trackKey;
         const requestId = ++this._requestId;
+<<<<<<< HEAD
+=======
+        const embedded = findEmbeddedLyrics(snapshot);
+        const local = embedded ?? findLocalLyrics(snapshot, this._settings);
+>>>>>>> e680dc6197e44e4e0575d03e7b495160a7dbcf68
         const preferLocal = this._settings.get_boolean('prefer-local-lyrics');
         const onlineEnabled = this._settings.get_boolean('online-fallback');
         const disabledProviders = new Set(
@@ -531,11 +584,15 @@ export class LyricIndicator extends PanelMenu.Button {
         if (this._onlineFetcher)
             this._onlineFetcher.abort();
         this._onlineFetcher = null;
+<<<<<<< HEAD
 
         const local = findEmbeddedLyrics(snapshot) ??
             await findLocalLyrics(snapshot, this._settings);
         if (requestId !== this._requestId)
             return;
+=======
+        this._setLyricText('加载歌词…');
+>>>>>>> e680dc6197e44e4e0575d03e7b495160a7dbcf68
 
         if (preferLocal && local) {
             this._setDocument(local);
@@ -543,7 +600,10 @@ export class LyricIndicator extends PanelMenu.Button {
         }
 
         if (onlineEnabled) {
+<<<<<<< HEAD
             this._setLyricText('加载歌词…');
+=======
+>>>>>>> e680dc6197e44e4e0575d03e7b495160a7dbcf68
             this._onlineFetcher = new OnlineLyricsFetcher(
                 snapshot,
                 providerIds,
@@ -574,7 +634,10 @@ export class LyricIndicator extends PanelMenu.Button {
 
     _setDocument(document) {
         this._document = document;
+<<<<<<< HEAD
         this._card?.setLyricDocument(document);
+=======
+>>>>>>> e680dc6197e44e4e0575d03e7b495160a7dbcf68
         this._updateLyricLine(true);
     }
 
@@ -583,6 +646,7 @@ export class LyricIndicator extends PanelMenu.Button {
             return;
 
         const position = this._controller.getCurrentPositionSeconds();
+<<<<<<< HEAD
         const entry = this._document.getEntryAt(position);
         const line = entry?.text ?? '';
         if (!force && line === this._currentLine) {
@@ -600,6 +664,13 @@ export class LyricIndicator extends PanelMenu.Button {
 
         const span = Math.max(0.001, entry.end - entry.start);
         this._label.setProgress((position - entry.start) / span);
+=======
+        const line = this._document.getLineAt(position);
+        if (!force && line === this._currentLine)
+            return;
+
+        this._setLyricText(line);
+>>>>>>> e680dc6197e44e4e0575d03e7b495160a7dbcf68
     }
 
     _setLyricText(text) {
@@ -609,7 +680,11 @@ export class LyricIndicator extends PanelMenu.Button {
 
         this._currentLine = value;
         this._cancelMarquee();
+<<<<<<< HEAD
         this._label.setText(value);
+=======
+        this._label.text = value;
+>>>>>>> e680dc6197e44e4e0575d03e7b495160a7dbcf68
         if (!value)
             return;
 
@@ -656,7 +731,13 @@ export class LyricIndicator extends PanelMenu.Button {
                     return GLib.SOURCE_REMOVE;
                 }
 
+<<<<<<< HEAD
                 const textWidth = this._label.getNaturalWidth() + 4;
+=======
+                const [, naturalWidth] =
+                    this._label.clutter_text.get_preferred_width(-1);
+                const textWidth = Math.ceil(Number(naturalWidth)) + 4;
+>>>>>>> e680dc6197e44e4e0575d03e7b495160a7dbcf68
                 const viewportWidth = Math.max(
                     Math.floor(Number(this._viewport.width)),
                     1

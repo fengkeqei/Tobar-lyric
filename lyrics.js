@@ -37,6 +37,7 @@ function textFromContents(contents) {
     }
 }
 
+<<<<<<< HEAD
 function textFromBytes(contents) {
     const utf8 = textFromContents(contents);
     if (!utf8.includes('\uFFFD') && !utf8.includes('\u0000'))
@@ -67,6 +68,30 @@ function readFileAsync(file) {
             resolve(contents ? textFromBytes(contents) : '');
         });
     });
+=======
+function readFile(file) {
+    try {
+        const [ok, contents] = file.load_contents(null);
+        if (!ok)
+            return '';
+
+        const utf8 = textFromContents(contents);
+        if (!utf8.includes('\uFFFD') && !utf8.includes('\u0000'))
+            return utf8;
+
+        const bytes = contents instanceof Uint8Array
+            ? contents
+            : new Uint8Array(contents);
+        if (bytes.length >= 2 && bytes[0] === 0xff && bytes[1] === 0xfe)
+            return new TextDecoder('utf-16le').decode(bytes);
+        if (bytes.length >= 2 && bytes[0] === 0xfe && bytes[1] === 0xff)
+            return new TextDecoder('utf-16be').decode(bytes);
+
+        return utf8;
+    } catch (_error) {
+        return '';
+    }
+>>>>>>> e680dc6197e44e4e0575d03e7b495160a7dbcf68
 }
 
 export function getArtist(metadata) {
@@ -86,17 +111,30 @@ export function findEmbeddedLyrics(snapshot) {
 }
 
 export class LyricDocument {
+<<<<<<< HEAD
     constructor(lines = [], source = 'none', synced = false) {
+=======
+    constructor(lines = [], source = 'none') {
+>>>>>>> e680dc6197e44e4e0575d03e7b495160a7dbcf68
         this.lines = lines
             .filter(line => Number.isFinite(line.time) && cleanText(line.text))
             .sort((a, b) => a.time - b.time);
         this.source = source;
+<<<<<<< HEAD
         // Plain lyrics carry fabricated timestamps, so they cannot drive
         // highlighting or seeking.
         this.synced = synced;
     }
 
     getLineIndexAt(seconds) {
+=======
+    }
+
+    getLineAt(seconds) {
+        if (this.lines.length === 0)
+            return '';
+
+>>>>>>> e680dc6197e44e4e0575d03e7b495160a7dbcf68
         let low = 0;
         let high = this.lines.length - 1;
         let result = -1;
@@ -111,6 +149,7 @@ export class LyricDocument {
             }
         }
 
+<<<<<<< HEAD
         return result;
     }
 
@@ -130,6 +169,9 @@ export class LyricDocument {
 
     getLineAt(seconds) {
         return this.getEntryAt(seconds)?.text ?? '';
+=======
+        return result >= 0 ? this.lines[result].text : '';
+>>>>>>> e680dc6197e44e4e0575d03e7b495160a7dbcf68
     }
 
     static fromLrc(text, source = 'local') {
@@ -172,7 +214,11 @@ export class LyricDocument {
             }
         }
 
+<<<<<<< HEAD
         return new LyricDocument(lines, source, true);
+=======
+        return new LyricDocument(lines, source);
+>>>>>>> e680dc6197e44e4e0575d03e7b495160a7dbcf68
     }
 
     static fromPlain(text, source = 'online') {
@@ -209,7 +255,11 @@ export function parseLyricsText(text, source = 'local', synced = false) {
     return document.lines.length > 0 ? document : null;
 }
 
+<<<<<<< HEAD
 export async function findLocalLyrics(snapshot, settings) {
+=======
+export function findLocalLyrics(snapshot, settings) {
+>>>>>>> e680dc6197e44e4e0575d03e7b495160a7dbcf68
     const metadata = snapshot?.metadata ?? {};
     const artist = getArtist(metadata);
     const title = getTitle(metadata);
@@ -249,7 +299,11 @@ export async function findLocalLyrics(snapshot, settings) {
     }
 
     for (const candidate of candidates) {
+<<<<<<< HEAD
         const text = await readFileAsync(candidate);
+=======
+        const text = readFile(candidate);
+>>>>>>> e680dc6197e44e4e0575d03e7b495160a7dbcf68
         if (!text)
             continue;
 

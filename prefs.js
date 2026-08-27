@@ -295,7 +295,10 @@ export default class LyricExPreferences extends ExtensionPreferences {
             ['card-show-seek-buttons', '显示快进快退按钮', '按下方设置的秒数跳转'],
             ['card-show-shuffle', '显示随机播放按钮', '仅对支持随机播放的应用显示'],
             ['card-show-loop', '显示循环播放按钮', '仅对支持循环播放的应用显示'],
+<<<<<<< HEAD
             ['card-show-lyrics', '显示完整歌词页', '展开后当前行高亮，点击歌词行跳转播放位置'],
+=======
+>>>>>>> e680dc6197e44e4e0575d03e7b495160a7dbcf68
         ]) {
             const row = new Adw.SwitchRow({title, subtitle});
             settings.bind(
@@ -487,6 +490,7 @@ export default class LyricExPreferences extends ExtensionPreferences {
             24
         );
         displayGroup.add(fontRow);
+<<<<<<< HEAD
 
         const karaokeRow = new Adw.SwitchRow({
             title: '逐字卡拉OK高亮',
@@ -499,6 +503,8 @@ export default class LyricExPreferences extends ExtensionPreferences {
             Gio.SettingsBindFlags.DEFAULT
         );
         displayGroup.add(karaokeRow);
+=======
+>>>>>>> e680dc6197e44e4e0575d03e7b495160a7dbcf68
         page.add(displayGroup);
 
         return page;

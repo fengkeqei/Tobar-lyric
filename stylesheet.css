@@ -168,6 +168,7 @@
     background-color: rgba(128, 128, 128, 0.34);
     border-color: rgba(128, 128, 128, 0.42);
 }
+<<<<<<< HEAD
 
 .lyric-ex-lyrics {
     max-height: 260px;
@@ -219,3 +220,5 @@
 .lyric-ex-lyrics-line-active .lyric-ex-karaoke-on .lyric-ex-karaoke-base {
     opacity: 0.6;
 }
+=======
+>>>>>>> e680dc6197e44e4e0575d03e7b495160a7dbcf68
