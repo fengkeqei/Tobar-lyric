@@ -1,0 +1,163 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.gnome.shell.extensions.lyric-ex"
+          path="/org/gnome/shell/extensions/lyric-ex/">
+    <key name="local-directories" type="as">
+      <default>['~/Music/Lyrics']</default>
+      <summary>本地歌词目录</summary>
+      <description>按顺序搜索的本地歌词目录。每行一个目录，也可以使用波浪号表示用户主目录。</description>
+    </key>
+    <key name="prefer-local-lyrics" type="b">
+      <default>false</default>
+      <summary>优先使用本地歌词</summary>
+      <description>关闭时默认先请求在线歌词，在线不可用时再回退到本地歌词。</description>
+    </key>
+    <key name="online-fallback" type="b">
+      <default>true</default>
+      <summary>启用在线歌词回退</summary>
+      <description>没有找到本地歌词时，使用在线歌词接口。</description>
+    </key>
+    <key name="enable-controls" type="b">
+      <default>true</default>
+      <summary>启用播放控制按钮</summary>
+      <description>悬停歌词时显示上一曲、播放/暂停和下一曲按钮。</description>
+    </key>
+    <key name="enable-player-background" type="b">
+      <default>false</default>
+      <summary>旧版本兼容设置</summary>
+      <description>为旧版本配置保留的兼容项，当前版本不再使用。</description>
+    </key>
+    <key name="online-endpoint" type="s">
+      <default>'https://api.lyrics.ovh/v1'</default>
+      <summary>旧版本在线接口地址</summary>
+      <description>为旧版本配置保留的兼容项，当前版本使用多个固定在线歌词源。</description>
+    </key>
+    <key name="online-providers" type="as">
+      <default>['netease', 'qqmusic', 'kugou', 'lrclib', 'lyrics-ovh']</default>
+      <summary>在线歌词源顺序</summary>
+      <description>按列表顺序尝试在线歌词源。歌词源不可用时自动尝试下一个。</description>
+    </key>
+    <key name="online-disabled-providers" type="as">
+      <default>[]</default>
+      <summary>已关闭的在线歌词源</summary>
+      <description>列表中的歌词源不会被请求。</description>
+    </key>
+    <key name="player-app-filter-enabled" type="b">
+      <default>false</default>
+      <summary>启用播放器应用筛选</summary>
+      <description>开启后，只对设置为启用的 MPRIS 播放器搜索歌词；关闭时保持兼容，识别所有 MPRIS 播放器。</description>
+    </key>
+    <key name="enabled-player-apps" type="as">
+      <default>[]</default>
+      <summary>已启用的播放器应用</summary>
+      <description>应用筛选开启后，只有列表中的播放器应用会触发歌词搜索。</description>
+    </key>
+    <key name="player-app-order" type="as">
+      <default>[]</default>
+      <summary>播放器应用优先级</summary>
+      <description>多个播放器同时播放时，按列表顺序选择歌词来源；正在播放的应用优先于暂停的应用。</description>
+    </key>
+    <key name="card-show-art" type="b">
+      <default>true</default>
+      <summary>显示专辑封面</summary>
+      <description>在正在播放卡片中显示 MPRIS 播放器提供的专辑封面。</description>
+    </key>
+    <key name="card-show-seek-bar" type="b">
+      <default>true</default>
+      <summary>显示进度条</summary>
+      <description>在正在播放卡片中显示可拖动的播放进度条。</description>
+    </key>
+    <key name="card-show-seek-buttons" type="b">
+      <default>true</default>
+      <summary>显示快进快退按钮</summary>
+      <description>在正在播放卡片中显示按秒数跳转的快进和快退按钮。</description>
+    </key>
+    <key name="card-show-shuffle" type="b">
+      <default>true</default>
+      <summary>显示随机播放按钮</summary>
+      <description>播放器支持随机播放时，在卡片中显示随机播放按钮。</description>
+    </key>
+    <key name="card-show-loop" type="b">
+      <default>true</default>
+      <summary>显示循环播放按钮</summary>
+      <description>播放器支持循环播放时，在卡片中显示循环播放按钮。</description>
+    </key>
+    <key name="card-show-lyrics" type="b">
+      <default>true</default>
+      <summary>显示完整歌词页</summary>
+      <description>在正在播放卡片中显示完整歌词展开按钮；展开后当前行高亮，点击歌词行可跳转播放位置。</description>
+    </key>
+    <!-- Kept for already-loaded GNOME Shell modules; not exposed in preferences. -->
+    <key name="card-enabled" type="b">
+      <default>true</default>
+      <summary>兼容项</summary>
+      <description>仅用于兼容已加载的旧扩展模块。</description>
+    </key>
+    <key name="seek-step-seconds" type="i">
+      <default>10</default>
+      <range min="1" max="60"/>
+      <summary>快进快退秒数</summary>
+      <description>点击卡片快进或快退按钮时跳转的秒数。</description>
+    </key>
+    <key name="card-width" type="i">
+      <default>400</default>
+      <range min="300" max="560"/>
+      <summary>卡片宽度</summary>
+      <description>正在播放卡片的宽度。</description>
+    </key>
+    <key name="card-art-size" type="s">
+      <default>'medium'</default>
+      <choices>
+        <choice value='small'/>
+        <choice value='medium'/>
+        <choice value='large'/>
+      </choices>
+      <summary>专辑封面尺寸</summary>
+      <description>选择正在播放卡片中的专辑封面尺寸。</description>
+    </key>
+    <key name="karaoke-highlight" type="b">
+      <default>true</default>
+      <summary>逐字卡拉OK高亮</summary>
+      <description>当前歌词行按行时长从左到右填充主题色，作用于顶部栏歌词和卡片歌词页；需要带时间轴的歌词。</description>
+    </key>
+    <key name="font-size" type="i">
+      <default>13</default>      <range min="9" max="24"/>
+      <summary>歌词字号</summary>
+      <description>调整顶部栏歌词的显示字号。</description>
+    </key>
+    <key name="panel-box" type="s">
+      <default>'center'</default>
+      <choices>
+        <choice value='left'/>
+        <choice value='center'/>
+        <choice value='right'/>
+      </choices>
+      <summary>顶部栏区域</summary>
+      <description>选择歌词显示在顶部栏左侧、中间或右侧。</description>
+    </key>
+    <key name="panel-position" type="i">
+      <default>0</default>
+      <range min="0" max="20"/>
+      <summary>区域内位置</summary>
+      <description>调整歌词在所选顶部栏区域中的顺序。</description>
+    </key>
+    <key name="panel-lyric-width" type="i">
+      <default>240</default>
+      <range min="160" max="600"/>
+      <summary>歌词固定宽度</summary>
+      <description>固定状态栏歌词区域的宽度，过长歌词会在此区域内滚动显示。</description>
+    </key>
+    <key name="panel-offset-x" type="i">
+      <default>0</default>
+      <range min="-100" max="100"/>
+      <summary>横向微调</summary>
+      <description>以像素为单位微调歌词整体的水平位置。</description>
+    </key>
+    <key name="panel-offset-y" type="i">
+      <default>0</default>
+      <range min="-20" max="20"/>
+      <summary>纵向微调</summary>
+      <description>以像素为单位微调歌词整体的垂直位置。</description>
+    </key>
+  </schema>
+</schemalist>
