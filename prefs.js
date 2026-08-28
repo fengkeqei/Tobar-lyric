@@ -1,10 +1,12 @@
 import Adw from 'gi://Adw';
 import Gio from 'gi://Gio';
+import GLib from 'gi://GLib';
 import Gtk from 'gi://Gtk';
 
 import {ExtensionPreferences} from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
 
 import {MprisController} from './mpris.js';
+import {OffsetStore} from './offset-store.js';
 import {PROVIDERS} from './online.js';
 
 const PANEL_BOXES = [
@@ -295,10 +297,7 @@ export default class LyricExPreferences extends ExtensionPreferences {
             ['card-show-seek-buttons', '显示快进快退按钮', '按下方设置的秒数跳转'],
             ['card-show-shuffle', '显示随机播放按钮', '仅对支持随机播放的应用显示'],
             ['card-show-loop', '显示循环播放按钮', '仅对支持循环播放的应用显示'],
-<<<<<<< HEAD
             ['card-show-lyrics', '显示完整歌词页', '展开后当前行高亮，点击歌词行跳转播放位置'],
-=======
->>>>>>> e680dc6197e44e4e0575d03e7b495160a7dbcf68
         ]) {
             const row = new Adw.SwitchRow({title, subtitle});
             settings.bind(
@@ -490,7 +489,6 @@ export default class LyricExPreferences extends ExtensionPreferences {
             24
         );
         displayGroup.add(fontRow);
-<<<<<<< HEAD
 
         const karaokeRow = new Adw.SwitchRow({
             title: '逐字卡拉OK高亮',
@@ -503,9 +501,67 @@ export default class LyricExPreferences extends ExtensionPreferences {
             Gio.SettingsBindFlags.DEFAULT
         );
         displayGroup.add(karaokeRow);
-=======
->>>>>>> e680dc6197e44e4e0575d03e7b495160a7dbcf68
         page.add(displayGroup);
+
+        const cacheGroup = new Adw.PreferencesGroup({
+            title: '缓存管理',
+            description: '清理后不影响扩展运行，相关数据会按需重建。',
+        });
+        const makeCacheRow = (title, subtitle, onClear) => {
+            const row = new Adw.ActionRow({title, subtitle});
+            const button = new Gtk.Button({
+                label: '清理',
+                valign: Gtk.Align.CENTER,
+            });
+            button.connect('clicked', () => {
+                button.sensitive = false;
+                try {
+                    onClear();
+                } finally {
+                    button.sensitive = true;
+                }
+            });
+            row.add_suffix(button);
+            return row;
+        };
+        cacheGroup.add(makeCacheRow(
+            '歌词偏移记忆',
+            '清除所有歌曲的手动歌词偏移校正记录',
+            () => new OffsetStore().clear()
+        ));
+        cacheGroup.add(makeCacheRow(
+            '封面图片缓存',
+            `删除已下载的专辑封面（位于 ${GLib.build_filenamev([
+                GLib.get_user_cache_dir(),
+                'lyric-ex',
+                'card-art',
+            ])}）`,
+            () => {
+                const dir = Gio.File.new_for_path(GLib.build_filenamev([
+                    GLib.get_user_cache_dir(),
+                    'lyric-ex',
+                    'card-art',
+                ]));
+                try {
+                    const enumerator = dir.enumerate_children(
+                        'standard::name',
+                        Gio.FileQueryInfoFlags.NONE,
+                        null
+                    );
+                    for (;;) {
+                        const infos = enumerator.next_files(64);
+                        if (!infos || infos.length === 0)
+                            break;
+                        for (const info of infos)
+                            dir.get_child(info.get_name()).delete(null);
+                    }
+                    enumerator.close(null);
+                } catch (_error) {
+                    // Nothing cached yet.
+                }
+            }
+        ));
+        page.add(cacheGroup);
 
         return page;
     }

@@ -37,7 +37,6 @@ function textFromContents(contents) {
     }
 }
 
-<<<<<<< HEAD
 function textFromBytes(contents) {
     const utf8 = textFromContents(contents);
     if (!utf8.includes('\uFFFD') && !utf8.includes('\u0000'))
@@ -68,30 +67,6 @@ function readFileAsync(file) {
             resolve(contents ? textFromBytes(contents) : '');
         });
     });
-=======
-function readFile(file) {
-    try {
-        const [ok, contents] = file.load_contents(null);
-        if (!ok)
-            return '';
-
-        const utf8 = textFromContents(contents);
-        if (!utf8.includes('\uFFFD') && !utf8.includes('\u0000'))
-            return utf8;
-
-        const bytes = contents instanceof Uint8Array
-            ? contents
-            : new Uint8Array(contents);
-        if (bytes.length >= 2 && bytes[0] === 0xff && bytes[1] === 0xfe)
-            return new TextDecoder('utf-16le').decode(bytes);
-        if (bytes.length >= 2 && bytes[0] === 0xfe && bytes[1] === 0xff)
-            return new TextDecoder('utf-16be').decode(bytes);
-
-        return utf8;
-    } catch (_error) {
-        return '';
-    }
->>>>>>> e680dc6197e44e4e0575d03e7b495160a7dbcf68
 }
 
 export function getArtist(metadata) {
@@ -111,30 +86,20 @@ export function findEmbeddedLyrics(snapshot) {
 }
 
 export class LyricDocument {
-<<<<<<< HEAD
     constructor(lines = [], source = 'none', synced = false) {
-=======
-    constructor(lines = [], source = 'none') {
->>>>>>> e680dc6197e44e4e0575d03e7b495160a7dbcf68
         this.lines = lines
             .filter(line => Number.isFinite(line.time) && cleanText(line.text))
             .sort((a, b) => a.time - b.time);
         this.source = source;
-<<<<<<< HEAD
         // Plain lyrics carry fabricated timestamps, so they cannot drive
         // highlighting or seeking.
         this.synced = synced;
+        this.wordSynced = this.lines.some(line =>
+            Array.isArray(line.words) && line.words.length > 0
+        );
     }
 
     getLineIndexAt(seconds) {
-=======
-    }
-
-    getLineAt(seconds) {
-        if (this.lines.length === 0)
-            return '';
-
->>>>>>> e680dc6197e44e4e0575d03e7b495160a7dbcf68
         let low = 0;
         let high = this.lines.length - 1;
         let result = -1;
@@ -149,7 +114,6 @@ export class LyricDocument {
             }
         }
 
-<<<<<<< HEAD
         return result;
     }
 
@@ -164,14 +128,12 @@ export class LyricDocument {
             text: line.text,
             start: line.time,
             end: this.lines[index + 1]?.time ?? line.time + 10,
+            words: Array.isArray(line.words) ? line.words : null,
         };
     }
 
     getLineAt(seconds) {
         return this.getEntryAt(seconds)?.text ?? '';
-=======
-        return result >= 0 ? this.lines[result].text : '';
->>>>>>> e680dc6197e44e4e0575d03e7b495160a7dbcf68
     }
 
     static fromLrc(text, source = 'local') {
@@ -214,11 +176,7 @@ export class LyricDocument {
             }
         }
 
-<<<<<<< HEAD
         return new LyricDocument(lines, source, true);
-=======
-        return new LyricDocument(lines, source);
->>>>>>> e680dc6197e44e4e0575d03e7b495160a7dbcf68
     }
 
     static fromPlain(text, source = 'online') {
@@ -238,6 +196,65 @@ export class LyricDocument {
 const LRC_TIMESTAMP_PATTERN = /\[\d+:\d{1,2}(?:[.,]\d{1,3})?\]/;
 const LRC_METADATA_PATTERN = /^\s*\[[a-z]+:[^\]]*\]\s*$/im;
 
+const WORD_TAG_PATTERN = /<(\d+),(\d+),\d+>([^<]*)/g;
+const KRC_LINE_PATTERN = /^\s*\[(\d+),(\d+)\]/;
+
+// Parse a KRC/QRC content line: "[lineStart,lineDur]<wStart,wDur,0>字..."
+// Returns {time, text, words} or null.
+function parseWordLine(rawLine) {
+    const head = rawLine.match(KRC_LINE_PATTERN);
+    if (!head)
+        return null;
+
+    const lineStart = Number(head[1]);
+    const lineTextParts = [];
+    const words = [];
+    WORD_TAG_PATTERN.lastIndex = 0;
+    let match;
+    while ((match = WORD_TAG_PATTERN.exec(rawLine))) {
+        const text = match[3];
+        if (!text)
+            continue;
+        words.push({
+            start: lineStart + Number(match[1]),
+            end: lineStart + Number(match[1]) + Number(match[2]),
+            text,
+        });
+        lineTextParts.push(text);
+    }
+
+    const text = cleanText(lineTextParts.join(''));
+    if (!text)
+        return null;
+
+    return {
+        time: Math.max(0, lineStart / 1000),
+        text,
+        words: words.map(word => ({
+            start: word.start / 1000,
+            end: word.end / 1000,
+            text: word.text,
+        })),
+    };
+}
+
+export function isWordSyncedText(text) {
+    return /^\s*\[\d+,\d+\]</.test(String(text ?? ''));
+}
+
+export function parseWordSyncedText(text, source) {
+    const lines = [];
+    for (const rawLine of String(text ?? '').split('\n')) {
+        const line = parseWordLine(rawLine);
+        if (line)
+            lines.push(line);
+    }
+    const document = new LyricDocument(lines, source, true);
+    return document.lines.length > 0 && document.wordSynced
+        ? document
+        : null;
+}
+
 export function isLrcText(text) {
     const value = String(text ?? '');
     return LRC_TIMESTAMP_PATTERN.test(value) ||
@@ -255,11 +272,7 @@ export function parseLyricsText(text, source = 'local', synced = false) {
     return document.lines.length > 0 ? document : null;
 }
 
-<<<<<<< HEAD
 export async function findLocalLyrics(snapshot, settings) {
-=======
-export function findLocalLyrics(snapshot, settings) {
->>>>>>> e680dc6197e44e4e0575d03e7b495160a7dbcf68
     const metadata = snapshot?.metadata ?? {};
     const artist = getArtist(metadata);
     const title = getTitle(metadata);
@@ -299,11 +312,7 @@ export function findLocalLyrics(snapshot, settings) {
     }
 
     for (const candidate of candidates) {
-<<<<<<< HEAD
         const text = await readFileAsync(candidate);
-=======
-        const text = readFile(candidate);
->>>>>>> e680dc6197e44e4e0575d03e7b495160a7dbcf68
         if (!text)
             continue;
 

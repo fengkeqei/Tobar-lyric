@@ -6,11 +6,8 @@ import St from 'gi://St';
 
 import {Slider} from 'resource:///org/gnome/shell/ui/slider.js';
 
-<<<<<<< HEAD
 import {LyricsView} from './lyrics-view.js';
 
-=======
->>>>>>> e680dc6197e44e4e0575d03e7b495160a7dbcf68
 const US_PER_SECOND = 1_000_000;
 const DIM_OPACITY = 160;
 const DEFAULT_ART_SIZE = 'medium';
@@ -70,32 +67,24 @@ class NowPlayingCard extends St.BoxLayout {
         this._artPath = null;
         this._artSize = ART_SIZES[DEFAULT_ART_SIZE];
         this._tabsKey = '';
-<<<<<<< HEAD
         this._lyricsExpanded = false;
         this._hasLyrics = false;
         this._karaoke = false;
         this._pollInterval = 0;
-=======
->>>>>>> e680dc6197e44e4e0575d03e7b495160a7dbcf68
+        this._lyricOffset = 0;
 
         this._buildHeader();
         this._buildSeekBar();
         this._buildControls();
-<<<<<<< HEAD
         this._buildLyricsView();
-=======
->>>>>>> e680dc6197e44e4e0575d03e7b495160a7dbcf68
         this._settingsSignals = [
             settings.connect('changed::card-show-art', () => this.sync()),
             settings.connect('changed::card-show-seek-bar', () => this.sync()),
             settings.connect('changed::card-show-seek-buttons', () => this.sync()),
             settings.connect('changed::card-show-shuffle', () => this.sync()),
             settings.connect('changed::card-show-loop', () => this.sync()),
-<<<<<<< HEAD
             settings.connect('changed::card-show-lyrics', () => this._updateLyricsAvailability()),
             settings.connect('changed::karaoke-highlight', () => this._applyKaraoke()),
-=======
->>>>>>> e680dc6197e44e4e0575d03e7b495160a7dbcf68
             settings.connect('changed::card-width', () => this._applyWidth()),
             settings.connect('changed::card-art-size', () => this._applyArtSize()),
         ];
@@ -160,7 +149,6 @@ class NowPlayingCard extends St.BoxLayout {
             x_align: Clutter.ActorAlign.END,
             y_expand: true,
         });
-<<<<<<< HEAD
         this._lyricsToggleButton = iconButton('pan-down-symbolic');
         this._lyricsToggleButton.set_child(new St.Icon({
             icon_name: 'pan-down-symbolic',
@@ -172,8 +160,6 @@ class NowPlayingCard extends St.BoxLayout {
             this._setLyricsExpanded(!this._lyricsExpanded);
         });
         actions.add_child(this._lyricsToggleButton);
-=======
->>>>>>> e680dc6197e44e4e0575d03e7b495160a7dbcf68
         this._settingsButton = iconButton('emblem-system-symbolic');
         this._settingsButton.set_child(new St.Icon({
             icon_name: 'emblem-system-symbolic',
@@ -310,15 +296,58 @@ class NowPlayingCard extends St.BoxLayout {
         this.add_child(row);
     }
 
-<<<<<<< HEAD
     _buildLyricsView() {
         this._lyricsView = new LyricsView();
         this._applyKaraoke();
         this._lyricsView.connect('line-activated', (_view, seconds) => {
-            this._callbacks.onSetPosition?.(seconds * US_PER_SECOND);
+            // Seek target in playback time: the lyric timestamp plus the
+            // active offset keeps the clicked line under the highlight.
+            this._callbacks.onSetPosition?.(
+                (seconds + this._lyricOffset) * US_PER_SECOND
+            );
             this._lyricsView.setPosition(seconds);
         });
         this.add_child(this._lyricsView);
+
+        this._offsetBox = new St.BoxLayout({
+            style_class: 'lyric-ex-offset-box',
+            x_align: Clutter.ActorAlign.CENTER,
+            visible: false,
+        });
+        this._offsetDownButton = this._makeOffsetButton('延后半秒', '-0.5s', -0.5);
+        this._offsetLabel = new St.Label({
+            style_class: 'lyric-ex-offset-label',
+            text: '无偏移',
+            y_align: Clutter.ActorAlign.CENTER,
+        });
+        this._offsetUpButton = this._makeOffsetButton('推迟半秒', '+0.5s', 0.5);
+        this._offsetBox.add_child(this._offsetDownButton);
+        this._offsetBox.add_child(this._offsetLabel);
+        this._offsetBox.add_child(this._offsetUpButton);
+        this.add_child(this._offsetBox);
+    }
+
+    _makeOffsetButton(accessibleName, text, delta) {
+        const button = new St.Button({
+            style_class: 'lyric-ex-offset-button',
+            can_focus: true,
+            accessible_name: accessibleName,
+        });
+        button.set_child(new St.Label({text}));
+        button.connect('clicked', () => {
+            this._callbacks.onOffsetDelta?.(delta);
+        });
+        return button;
+    }
+
+    setLyricOffset(offset) {
+        this._lyricOffset = Number(offset) || 0;
+        if (this._offsetLabel) {
+            this._offsetLabel.text = Math.abs(this._lyricOffset) < 0.01
+                ? '无偏移'
+                : `${this._lyricOffset > 0 ? '+' : ''}${this._lyricOffset.toFixed(1)}s`;
+        }
+        this._updateOffsetBoxVisibility();
     }
 
     _applyKaraoke() {
@@ -352,13 +381,16 @@ class NowPlayingCard extends St.BoxLayout {
         this._lyricsToggleButton.accessible_name = this._lyricsExpanded
             ? '收起歌词'
             : '展开歌词';
+        this._updateOffsetBoxVisibility();
         this._updateTimer();
         if (this._lyricsExpanded)
             this._refreshPosition();
     }
 
-=======
->>>>>>> e680dc6197e44e4e0575d03e7b495160a7dbcf68
+    _updateOffsetBoxVisibility() {
+        this._offsetBox.visible = this._lyricsExpanded && this._hasLyrics;
+    }
+
     setState(player, players = []) {
         const previousKey = this._trackKey(this._player);
         const nextKey = this._trackKey(player);
@@ -588,10 +620,9 @@ class NowPlayingCard extends St.BoxLayout {
             : 0;
         this._slider.value = fraction;
         this._updateTimeLabels(this._position);
-<<<<<<< HEAD
-        this._lyricsView?.setPosition(this._position / US_PER_SECOND);
-=======
->>>>>>> e680dc6197e44e4e0575d03e7b495160a7dbcf68
+        this._lyricsView?.setPosition(
+            this._position / US_PER_SECOND - this._lyricOffset
+        );
     }
 
     _updateTimeLabels(position, length = this._length) {
@@ -614,7 +645,6 @@ class NowPlayingCard extends St.BoxLayout {
 
     _updateTimer() {
         const wanted = this._active &&
-<<<<<<< HEAD
             this._player?.status === 'Playing' &&
             (this._settings.get_boolean('card-show-seek-bar') ||
                 this._lyricsExpanded);
@@ -642,11 +672,6 @@ class NowPlayingCard extends St.BoxLayout {
                 }
             );
         } else {
-=======
-            this._settings.get_boolean('card-show-seek-bar') &&
-            this._player?.status === 'Playing';
-        if (wanted && !this._pollId) {
->>>>>>> e680dc6197e44e4e0575d03e7b495160a7dbcf68
             this._pollId = GLib.timeout_add_seconds(
                 GLib.PRIORITY_DEFAULT,
                 1,
@@ -655,12 +680,6 @@ class NowPlayingCard extends St.BoxLayout {
                     return GLib.SOURCE_CONTINUE;
                 }
             );
-<<<<<<< HEAD
-=======
-        } else if (!wanted && this._pollId) {
-            GLib.source_remove(this._pollId);
-            this._pollId = 0;
->>>>>>> e680dc6197e44e4e0575d03e7b495160a7dbcf68
         }
     }
 

@@ -125,7 +125,11 @@ export const LyricsView = GObject.registerClass({
             const start = this._document.lines[index].time;
             const end = this._document.lines[index + 1]?.time ?? start + 10;
             const span = Math.max(0.001, end - start);
-            active.child.setProgress((seconds - start) / span);
+            const words = this._document.lines[index].words;
+            if (words && words.length > 0)
+                active.child.setWordProgress(words, seconds);
+            else
+                active.child.setProgress((seconds - start) / span);
         }
     }
 

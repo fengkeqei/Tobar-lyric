@@ -168,7 +168,6 @@
     background-color: rgba(128, 128, 128, 0.34);
     border-color: rgba(128, 128, 128, 0.42);
 }
-<<<<<<< HEAD
 
 .lyric-ex-lyrics {
     max-height: 260px;
@@ -205,6 +204,10 @@
 }
 
 .lyric-ex-karaoke-on .lyric-ex-karaoke-base {
+    /* Base and fill MUST share the same weight/size: the fill layer is a
+       per-pixel-aligned copy of the base text, and any width difference
+       makes the sweep drift off the glyphs toward the line's end. */
+    font-weight: 700;
     opacity: 0.55;
 }
 
@@ -220,5 +223,24 @@
 .lyric-ex-lyrics-line-active .lyric-ex-karaoke-on .lyric-ex-karaoke-base {
     opacity: 0.6;
 }
-=======
->>>>>>> e680dc6197e44e4e0575d03e7b495160a7dbcf68
+
+.lyric-ex-offset-box {
+    spacing: 10px;
+    min-height: 28px;
+}
+
+.lyric-ex-offset-button {
+    padding: 2px 10px;
+    border-radius: 6px;
+    background-color: rgba(128, 128, 128, 0.16);
+}
+
+.lyric-ex-offset-button:hover,
+.lyric-ex-offset-button:focus {
+    background-color: rgba(128, 128, 128, 0.28);
+}
+
+.lyric-ex-offset-label {
+    opacity: 0.72;
+    font-size: 0.85em;
+}

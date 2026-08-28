@@ -17,6 +17,7 @@ class KaraokeLabel extends St.Widget {
         this._textWidth = 0;
         this._progress = 0;
         this._karaokeEnabled = false;
+        this._charEdges = null;
 
         this._baseLabel = new St.Label({
             style_class: 'lyric-ex-karaoke-base',
@@ -57,8 +58,97 @@ class KaraokeLabel extends St.Widget {
         this._baseLabel.text = text;
         this._fillLabel.text = text;
         this._textWidth = 0;
+        this._charEdges = null;
         this._progress = 0;
         this._applyProgress();
+    }
+
+    // Drive the fill from per-word timing: `words` are {start, end, text}
+    // spans in seconds, `seconds` is the playback position. The fill edge
+    // follows each character's own pixel width, so wide and narrow
+    // characters complete at their real positions — the Flyme-style sweep.
+    setWordProgress(words, seconds) {
+        if (!words || words.length === 0) {
+            this.setProgress(0);
+            return;
+        }
+
+        this._measure();
+        if (!this._charEdges)
+            this._measureCharEdges();
+
+        // Locate the active word.
+        let wordIndex = -1;
+        let within = 0;
+        if (seconds < words[0].start) {
+            this._applyFraction(0);
+            return;
+        }
+        for (let i = 0; i < words.length; i++) {
+            if (seconds < words[i].start) {
+                wordIndex = i - 1;
+                within = 1;
+                break;
+            }
+            if (seconds < words[i].end) {
+                wordIndex = i;
+                within = (seconds - words[i].start) /
+                    Math.max(0.001, words[i].end - words[i].start);
+                break;
+            }
+        }
+        if (wordIndex < 0) {
+            this._applyFraction(1);
+            return;
+        }
+
+        // Count characters covered by completed words.
+        let charIndex = 0;
+        for (let i = 0; i < wordIndex; i++)
+            charIndex += [...words[i].text].length;
+        charIndex += within * [...words[wordIndex].text].length;
+
+        const edges = this._charEdges;
+        const totalChars = edges.length - 1;
+        const clamped = Math.max(0, Math.min(totalChars, charIndex));
+        const low = Math.floor(clamped);
+        const high = Math.ceil(clamped);
+        const blend = clamped - low;
+        const width = edges[low] + (edges[high] - edges[low]) * blend;
+        this._applyFraction(width / this._textWidth);
+    }
+
+    _measureCharEdges() {
+        const chars = [...this._text];
+        const edges = [0];
+        // Measure each character's advance width via a scratch label with
+        // identical styling; widths accumulate into pixel edges.
+        const scratch = new St.Label({
+            style_class: 'lyric-ex-karaoke-fill',
+        });
+        scratch.clutter_text.set({
+            ellipsize: Pango.EllipsizeMode.NONE,
+            line_wrap: false,
+        });
+        const style = this._fillLabel.style;
+        if (style)
+            scratch.set_style(style);
+        let acc = 0;
+        for (const char of chars) {
+            scratch.text = char;
+            const [, natural] = scratch.clutter_text.get_preferred_width(-1);
+            acc += Math.ceil(Number(natural)) || 0;
+            edges.push(acc);
+        }
+        scratch.destroy();
+        // Normalize against the full-string width to absorb hinting
+        // differences between per-char and whole-string measurement.
+        const scale = this._textWidth > 0 && acc > 0
+            ? this._textWidth / acc
+            : 1;
+        this._charEdges = scale === 1
+            ? edges
+            : edges.map(value => value * scale);
     }
 
     setFontSize(size) {
@@ -66,6 +156,7 @@ class KaraokeLabel extends St.Widget {
         this._baseLabel.set_style(style);
         this._fillLabel.set_style(style);
         this._textWidth = 0;
+        this._charEdges = null;
         this._applyProgress();
     }
 
@@ -87,6 +178,14 @@ class KaraokeLabel extends St.Widget {
         if (value === this._progress)
             return;
 
+        this._progress = value;
+        this._applyProgress();
+    }
+
+    _applyFraction(fraction) {
+        const value = Math.max(0, Math.min(1, Number(fraction) || 0));
+        if (value === this._progress)
+            return;
         this._progress = value;
         this._applyProgress();
     }

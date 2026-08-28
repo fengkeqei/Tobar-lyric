@@ -135,10 +135,7 @@ export class MprisController {
         this._current = null;
         this._selectedBusName = null;
         this._destroyed = false;
-<<<<<<< HEAD
         this._discoverPendingId = 0;
-=======
->>>>>>> e680dc6197e44e4e0575d03e7b495160a7dbcf68
         this._filterEnabled = false;
         this._enabledApps = new Set();
         this._appOrder = [];
@@ -158,7 +155,6 @@ export class MprisController {
                 if (signal !== 'NameOwnerChanged')
                     return;
 
-<<<<<<< HEAD
                 const [name, oldOwner, newOwner] = parameters.deep_unpack();
                 if (!String(name).startsWith('org.mpris.MediaPlayer2.'))
                     return;
@@ -166,19 +162,11 @@ export class MprisController {
                     return;
 
                 this._scheduleDiscover();
-=======
-                const [name] = parameters.deep_unpack();
-                if (!String(name).startsWith('org.mpris.MediaPlayer2.'))
-                    return;
-
-                this._discoverPlayers();
->>>>>>> e680dc6197e44e4e0575d03e7b495160a7dbcf68
             }
         );
         this._discoverPlayers();
     }
 
-<<<<<<< HEAD
     _scheduleDiscover() {
         if (this._destroyed || this._discoverPendingId)
             return;
@@ -194,8 +182,6 @@ export class MprisController {
         );
     }
 
-=======
->>>>>>> e680dc6197e44e4e0575d03e7b495160a7dbcf68
     setPlayerSelection({filterEnabled = false, enabledApps = [], appOrder = []} = {}) {
         this._filterEnabled = Boolean(filterEnabled);
         this._enabledApps = new Set(
@@ -231,13 +217,10 @@ export class MprisController {
 
     destroy() {
         this._destroyed = true;
-<<<<<<< HEAD
         if (this._discoverPendingId) {
             GLib.source_remove(this._discoverPendingId);
             this._discoverPendingId = 0;
         }
-=======
->>>>>>> e680dc6197e44e4e0575d03e7b495160a7dbcf68
         if (this._signalId) {
             this._busProxy.disconnect(this._signalId);
             this._signalId = 0;

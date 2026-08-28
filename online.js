@@ -1,7 +1,8 @@
 import GLib from 'gi://GLib';
 import Soup from 'gi://Soup?version=3.0';
 
-import {parseLyricsText} from './lyrics.js';
+import {decryptKrc} from './krc.js';
+import {isWordSyncedText, parseLyricsText, parseWordSyncedText} from './lyrics.js';
 
 export const PROVIDERS = [
     {id: 'netease', name: '网易云音乐', description: '国内带时间轴歌词源'},
@@ -145,7 +146,6 @@ function documentFromText(text, source, synced = true) {
     return parseLyricsText(text, source, synced);
 }
 
-<<<<<<< HEAD
 let _sharedSession = null;
 
 function sharedSession() {
@@ -156,20 +156,13 @@ function sharedSession() {
     return _sharedSession;
 }
 
-=======
->>>>>>> e680dc6197e44e4e0575d03e7b495160a7dbcf68
 export class OnlineLyricsFetcher {
     constructor(snapshot, providerIds, onResult, onComplete) {
         this._snapshot = snapshot;
         this._providerIds = providerIds;
         this._onResult = onResult;
         this._onComplete = onComplete;
-<<<<<<< HEAD
         this._session = sharedSession();
-=======
-        this._session = new Soup.Session();
-        this._session.timeout = 8;
->>>>>>> e680dc6197e44e4e0575d03e7b495160a7dbcf68
         this._providerIndex = 0;
         this._aborted = false;
     }
@@ -180,14 +173,9 @@ export class OnlineLyricsFetcher {
     }
 
     abort() {
-<<<<<<< HEAD
         // The session is shared across fetchers, so only detach; pending
         // responses are ignored via the _aborted flag.
         this._aborted = true;
-=======
-        this._aborted = true;
-        this._session.abort();
->>>>>>> e680dc6197e44e4e0575d03e7b495160a7dbcf68
     }
 
     _tryNext() {
@@ -252,6 +240,64 @@ export class OnlineLyricsFetcher {
                     }
 
                     callback({text: decodeBytes(bytes), status: message.get_status()});
+                } catch (_error) {
+                    callback(null);
+                }
+            }
+        );
+    }
+
+    // Raw response bytes, for encrypted formats such as Kugou KRC.
+    _requestBytes(uri, callback, headers = {}) {
+        const message = Soup.Message.new('GET', uri);
+        message.request_headers.append('User-Agent', 'LyricEx/4.0 GNOME/50');
+        for (const [name, value] of Object.entries(headers))
+            message.request_headers.append(name, value);
+
+        this._session.send_and_read_async(
+            message,
+            GLib.PRIORITY_DEFAULT,
+            null,
+            (session, result) => {
+                if (this._aborted)
+                    return;
+
+                try {
+                    const bytes = session.send_and_read_finish(result);
+                    if (message.get_status() < 200 || message.get_status() >= 300)
+                        return callback(null);
+                    callback({bytes: bytes.get_data(), status: message.get_status()});
+                } catch (_error) {
+                    callback(null);
+                }
+            }
+        );
+    }
+
+    // JSON POST used by endpoints (such as QQ Music's musicu.fcg) that
+    // reject plain GET requests.
+    _postJson(uri, payload, callback, headers = {}) {
+        const message = Soup.Message.new('POST', uri);
+        message.request_headers.append('User-Agent', 'LyricEx/4.0 GNOME/50');
+        message.request_headers.append('Content-Type', 'application/json');
+        for (const [name, value] of Object.entries(headers))
+            message.request_headers.append(name, value);
+
+        const body = GLib.Bytes.new(JSON.stringify(payload));
+        message.set_request_body_from_bytes('application/json', body);
+        this._session.send_and_read_async(
+            message,
+            GLib.PRIORITY_DEFAULT,
+            null,
+            (session, result) => {
+                if (this._aborted)
+                    return;
+
+                try {
+                    const bytes = session.send_and_read_finish(result);
+                    if (message.get_status() < 200 || message.get_status() >= 300)
+                        return callback(null);
+                    callback({text: decodeBytes(bytes)});
                 } catch (_error) {
                     callback(null);
                 }
@@ -391,14 +437,49 @@ export class OnlineLyricsFetcher {
             if (!song?.songmid)
                 return callback(null);
 
-            const lyricUri = `https://c.y.qq.com/lyric/fcgi-bin/fcg_query_lyric_new.fcg?songmid=${encode(song.songmid)}&format=json&inCharset=utf8&outCharset=utf-8&notice=0&platform=yqq.json`;
-            this._request(lyricUri, lyricResponse => {
-                if (!lyricResponse)
-                    return callback(null);
+            // musicu.fcg returns QRC (per-word timing) via POST; fall back
+            // to the legacy fcg endpoint for plain LRC.
+            const qrcPayload = {
+                req_1: {
+                    module: 'music.musichallSong.PlayLyricInfo',
+                    method: 'GetPlayLyricInfo',
+                    param: {
+                        songMID: song.songmid,
+                        songID: song.songid ?? 0,
+                        qrc: 1,
+                        crypt: 1,
+                    },
+                },
+            };
+            this._postJson(
+                'https://u.y.qq.com/cgi-bin/musicu.fcg',
+                qrcPayload,
+                qrcResponse => {
+                    if (this._aborted)
+                        return;
 
-                const lyric = decodeBase64(parseJson(lyricResponse.text)?.lyric);
-                callback(documentFromText(lyric, 'qqmusic', true));
-            }, {Referer: 'https://y.qq.com/'});
+                    const info = parseJson(qrcResponse?.text ?? '')?.req_1?.data;
+                    const qrcText = decodeBase64(info?.lyric);
+                    const qrcDocument = isWordSyncedText(qrcText)
+                        ? parseWordSyncedText(qrcText, 'qqmusic')
+                        : null;
+                    if (qrcDocument)
+                        return callback(qrcDocument);
+
+                    this._fetchQqMusicLrc(song.songmid, callback);
+                }
+            );
+        }, {Referer: 'https://y.qq.com/'});
+    }
+
+    _fetchQqMusicLrc(songmid, callback) {
+        const lyricUri = `https://c.y.qq.com/lyric/fcgi-bin/fcg_query_lyric_new.fcg?songmid=${encode(songmid)}&format=json&inCharset=utf8&outCharset=utf-8&notice=0&platform=yqq.json`;
+        this._request(lyricUri, lyricResponse => {
+            if (!lyricResponse)
+                return callback(null);
+
+            const lyric = decodeBase64(parseJson(lyricResponse.text)?.lyric);
+            callback(documentFromText(lyric, 'qqmusic', true));
         }, {Referer: 'https://y.qq.com/'});
     }
 
@@ -436,14 +517,31 @@ export class OnlineLyricsFetcher {
                 if (!candidate?.id || !candidate?.accesskey)
                     return callback(null);
 
-                const downloadUri = `https://lyrics.kugou.com/download?ver=1&client=pc&fmt=lrc&charset=utf8&id=${encode(candidate.id)}&accesskey=${encode(candidate.accesskey)}`;
-                this._request(downloadUri, downloadResponse => {
-                    if (!downloadResponse)
-                        return callback(null);
+                // Try the encrypted KRC format first for per-word timing;
+                // fall back to plain LRC when KRC is unavailable.
+                const krcUri = `https://lyrics.kugou.com/download?ver=1&client=pc&fmt=krc&charset=utf8&id=${encode(candidate.id)}&accesskey=${encode(candidate.accesskey)}`;
+                this._requestBytes(krcUri, krcResponse => {
+                    if (this._aborted)
+                        return;
 
-                    const result = parseJson(downloadResponse.text);
-                    const lyric = decodeBase64(result?.content);
-                    callback(documentFromText(lyric, 'kugou', true));
+                    const krcText = krcResponse
+                        ? decryptKrc(krcResponse.bytes)
+                        : '';
+                    const krcDocument = krcText
+                        ? parseWordSyncedText(krcText, 'kugou')
+                        : null;
+                    if (krcDocument)
+                        return callback(krcDocument);
+
+                    const downloadUri = `https://lyrics.kugou.com/download?ver=1&client=pc&fmt=lrc&charset=utf8&id=${encode(candidate.id)}&accesskey=${encode(candidate.accesskey)}`;
+                    this._request(downloadUri, downloadResponse => {
+                        if (!downloadResponse)
+                            return callback(null);
+
+                        const result = parseJson(downloadResponse.text);
+                        const lyric = decodeBase64(result?.content);
+                        callback(documentFromText(lyric, 'kugou', true));
+                    });
                 });
             });
         });

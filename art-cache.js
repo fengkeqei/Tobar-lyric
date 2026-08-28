@@ -222,6 +222,30 @@ export class ArtCache {
         );
     }
 
+    clear() {
+        this._cancellable.cancel();
+        this._pending.clear();
+        this._session?.abort();
+
+        try {
+            const enumerator = this._cacheDir.enumerate_children(
+                Gio.FILE_ATTRIBUTE_STANDARD_NAME,
+                Gio.FileQueryInfoFlags.NONE,
+                null
+            );
+            for (;;) {
+                const infos = enumerator.next_files(64);
+                if (!infos || infos.length === 0)
+                    break;
+                for (const info of infos)
+                    this._cacheDir.get_child(info.get_name()).delete(null);
+            }
+            enumerator.close(null);
+        } catch (_error) {
+            // Nothing cached yet, or removal failed; either is acceptable.
+        }
+    }
+
     destroy() {
         this._cancellable.cancel();
         this._pending.clear();
