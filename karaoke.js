@@ -9,7 +9,10 @@ export const KaraokeLabel = GObject.registerClass(
 class KaraokeLabel extends St.Widget {
     _init(styleClass = '') {
         super._init({
-            layout_manager: new Clutter.BinLayout(),
+            // FixedLayout positions children at their explicit coordinates;
+            // this mutter's BinLayout ignores child x_align and always
+            // centers, so alignment is computed manually in _applyAlign.
+            layout_manager: new Clutter.FixedLayout(),
             style_class: styleClass,
         });
 
@@ -18,6 +21,8 @@ class KaraokeLabel extends St.Widget {
         this._progress = 0;
         this._karaokeEnabled = false;
         this._charEdges = null;
+        this._align = 'start';
+        this.connect('notify::allocation', () => this._applyAlign());
 
         this._baseLabel = new St.Label({
             style_class: 'lyric-ex-karaoke-base',
@@ -32,7 +37,7 @@ class KaraokeLabel extends St.Widget {
 
         this._overlayBox = new St.Widget({
             style_class: 'lyric-ex-karaoke-overlay',
-            layout_manager: new Clutter.BinLayout(),
+            layout_manager: new Clutter.FixedLayout(),
             x_align: Clutter.ActorAlign.START,
             y_align: Clutter.ActorAlign.CENTER,
         });
@@ -173,6 +178,34 @@ class KaraokeLabel extends St.Widget {
         this._applyProgress();
     }
 
+    setAlign(mode) {
+        const value = ['start', 'center', 'end'].includes(mode)
+            ? mode
+            : 'start';
+        if (value === this._align)
+            return;
+
+        this._align = value;
+        this._applyAlign();
+    }
+
+    _applyAlign() {
+        if (!this._textWidth)
+            return;
+
+        const slack = Math.max(0, this.width - this._textWidth);
+        const x = this._align === 'end'
+            ? slack
+            : this._align === 'center'
+                ? Math.round(slack / 2)
+                : 0;
+        this._baseLabel.x = x;
+        this._overlayBox.x = x;
+        // The fill label must stay vertically centered over the base text.
+        this._baseLabel.y = 0;
+        this._overlayBox.y = 0;
+    }
+
     setProgress(fraction) {
         const value = Math.max(0, Math.min(1, Number(fraction) || 0));
         if (value === this._progress)
@@ -210,6 +243,7 @@ class KaraokeLabel extends St.Widget {
         this._baseLabel.width = this._textWidth;
         this._fillLabel.width = this._textWidth;
         this._overlayBox.width = this._textWidth;
+        this._applyAlign();
         this._applyProgress();
     }
 

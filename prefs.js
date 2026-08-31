@@ -460,6 +460,33 @@ export default class LyricExPreferences extends ExtensionPreferences {
         );
         displayGroup.add(lyricWidthRow);
 
+        const LYRIC_ALIGNS = [
+            {id: 'start', label: '起点'},
+            {id: 'center', label: '居中'},
+            {id: 'end', label: '终点'},
+        ];
+        const alignModel = Gtk.StringList.new(
+            LYRIC_ALIGNS.map(item => item.label)
+        );
+        const alignRow = new Adw.ComboRow({
+            title: '区域内对齐',
+            model: alignModel,
+        });
+        const syncAlign = () => {
+            const selected = LYRIC_ALIGNS.findIndex(
+                item => item.id === settings.get_string('lyric-align')
+            );
+            alignRow.selected = selected >= 0 ? selected : 0;
+        };
+        syncAlign();
+        alignRow.connect('notify::selected', () => {
+            const item = LYRIC_ALIGNS[alignRow.selected];
+            if (item)
+                settings.set_string('lyric-align', item.id);
+        });
+        settings.connect('changed::lyric-align', syncAlign);
+        displayGroup.add(alignRow);
+
         const offsetXRow = makeSpinRow(
             settings,
             'panel-offset-x',

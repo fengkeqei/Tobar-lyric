@@ -177,9 +177,14 @@ export class LyricIndicator extends PanelMenu.Button {
                 'changed::panel-lyric-width',
                 () => this._applyLyricWidth()
             ),
+            this._settings.connect(
+                'changed::lyric-align',
+                () => this._applyLyricAlign()
+            ),
         ];
         this._applyFontSize();
         this._applyLyricWidth();
+        this._applyLyricAlign();
         this._applyPanelOffset();
         this._applyControlsEnabled();
         this._applyKaraoke();
@@ -330,6 +335,13 @@ export class LyricIndicator extends PanelMenu.Button {
         );
         this._box.style =
             `width: ${width}px; min-width: ${width}px; max-width: ${width}px;`;
+    }
+
+    _applyLyricAlign() {
+        const value = this._settings.get_string('lyric-align');
+        this._label.setAlign(['start', 'center', 'end'].includes(value)
+            ? value
+            : 'start');
     }
 
     _applyPanelOffset() {
