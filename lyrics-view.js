@@ -77,6 +77,7 @@ export const LyricsView = GObject.registerClass({
             });
             const label = new KaraokeLabel('lyric-ex-lyrics-line-text');
             label.setText(line.text);
+            label.setAlign('center');
             label.setKaraokeEnabled(this._karaokeEnabled);
             button.set_child(label);
             if (this._document.synced) {

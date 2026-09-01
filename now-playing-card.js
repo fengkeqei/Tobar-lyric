@@ -471,8 +471,12 @@ class NowPlayingCard extends St.BoxLayout {
 
     _applyArtStyle() {
         const {size, radius} = this._artSize;
+        // contain keeps the artwork's aspect ratio inside the square
+        // instead of cropping it to fill.
         const image = this._artPath
-            ? ` background-image: ${cssUrl(this._artPath)};`
+            ? ` background-image: ${cssUrl(this._artPath)};` +
+              ' background-size: contain;' +
+              ' background-position: center;'
             : '';
         this._artButton.style =
             `width: ${size}px; height: ${size}px; border-radius: ${radius}px;${image}`;
