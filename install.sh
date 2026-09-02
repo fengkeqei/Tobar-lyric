@@ -19,7 +19,7 @@ trap cleanup EXIT
 
 rm -rf "$temporary"
 mkdir -p "$temporary"
-cp metadata.json extension.js indicator.js lyrics.js mpris.js online.js prefs.js stylesheet.css art-cache.js now-playing-card.js lyrics-view.js karaoke.js krc.js offset-store.js "$temporary/"
+cp metadata.json extension.js indicator.js lyrics.js mpris.js online.js prefs.js stylesheet.css art-cache.js now-playing-card.js lyrics-view.js karaoke.js krc.js offset-store.js selection-store.js "$temporary/"
 cp -r schemas "$temporary/"
 glib-compile-schemas "$temporary/schemas"
 

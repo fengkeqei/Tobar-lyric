@@ -1,4 +1,5 @@
 import Adw from 'gi://Adw';
+import Gdk from 'gi://Gdk?version=4.0';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Gtk from 'gi://Gtk';
@@ -8,6 +9,7 @@ import {ExtensionPreferences} from 'resource:///org/gnome/Shell/Extensions/js/ex
 import {MprisController} from './mpris.js';
 import {OffsetStore} from './offset-store.js';
 import {PROVIDERS} from './online.js';
+import {SelectionStore} from './selection-store.js';
 
 const PANEL_BOXES = [
     {id: 'left', label: '左侧'},
@@ -75,7 +77,32 @@ function makeIconButton(iconName, tooltip, callback, sensitive = true) {
     return button;
 }
 
-function makeSpinRow(settings, key, title, subtitle, lower, upper) {
+function rgbaToHex(color) {
+    const channel = value =>
+        Math.round(Math.max(0, Math.min(1, value)) * 255)
+            .toString(16)
+            .padStart(2, '0');
+    return `#${channel(color.red)}${channel(color.green)}${channel(color.blue)}`;
+}
+
+function rgbaFromHex(hex) {
+    const rgba = new Gdk.RGBA();
+    if (!rgba.parse(String(hex ?? ''))) {
+        rgba.red = 1;
+        rgba.green = 0.48;
+        rgba.blue = 0.62;
+    }
+    return rgba;
+}
+
+// Preset swatches for the karaoke fill color, tuned to read well on the
+// dark panel.
+const COLOR_SWATCHES = [
+    '#ff7a9e', '#e94f64', '#ff9f43', '#ffd166', '#a3e635', '#7bd88f',
+    '#4ecdc4', '#54a0ff', '#a29bfe', '#f472b6', '#f8f7ff', '#b8c1cc',
+];
+
+function makeSpinRow(watch, settings, key, title, subtitle, lower, upper) {
     const row = new Adw.SpinRow({
         title,
         subtitle,
@@ -96,7 +123,7 @@ function makeSpinRow(settings, key, title, subtitle, lower, upper) {
     row.connect('notify::value', () => {
         settings.set_int(key, Math.round(row.value));
     });
-    settings.connect(`changed::${key}`, sync);
+    watch(key, sync);
     return row;
 }
 
@@ -104,6 +131,17 @@ export default class LyricExPreferences extends ExtensionPreferences {
     getPreferencesWidget() {
         const settings = this.getSettings();
         const page = new Adw.PreferencesPage();
+        // Signal ids to detach when the page is torn down, so repeatedly
+        // opening preferences does not accumulate listeners.
+        const settingsSignalIds = [];
+        const watchSetting = (key, callback) =>
+            settingsSignalIds.push(settings.connect(`changed::${key}`, callback));
+        page.connect('destroy', () => {
+            for (const id of settingsSignalIds)
+                settings.disconnect(id);
+            settingsSignalIds.length = 0;
+            playerController?.destroy();
+        });
 
         const localGroup = new Adw.PreferencesGroup({
             title: '本地歌词',
@@ -285,6 +323,9 @@ export default class LyricExPreferences extends ExtensionPreferences {
             }
         );
         rebuildPlayerRows();
+        // Rebuild on reorder too, otherwise the rows keep the previous
+        // visual order and stale up/down sensitivity until a player change.
+        watchSetting('player-app-order', rebuildPlayerRows);
         page.add(playerGroup);
 
         const cardGroup = new Adw.PreferencesGroup({
@@ -309,6 +350,7 @@ export default class LyricExPreferences extends ExtensionPreferences {
             cardGroup.add(row);
         }
         cardGroup.add(makeSpinRow(
+            watchSetting,
             settings,
             'seek-step-seconds',
             '快进快退秒数',
@@ -317,6 +359,7 @@ export default class LyricExPreferences extends ExtensionPreferences {
             60
         ));
         cardGroup.add(makeSpinRow(
+            watchSetting,
             settings,
             'card-width',
             '卡片宽度',
@@ -340,7 +383,7 @@ export default class LyricExPreferences extends ExtensionPreferences {
             if (value)
                 settings.set_string('card-art-size', value);
         });
-        settings.connect('changed::card-art-size', syncArtSize);
+        watchSetting('card-art-size', syncArtSize);
         cardGroup.add(artSizeRow);
         page.add(cardGroup);
 
@@ -412,8 +455,8 @@ export default class LyricExPreferences extends ExtensionPreferences {
                 providerGroup.add(row);
             });
         };
-        settings.connect('changed::online-providers', rebuildProviderRows);
-        settings.connect('changed::online-disabled-providers', rebuildProviderRows);
+        watchSetting('online-providers', rebuildProviderRows);
+        watchSetting('online-disabled-providers', rebuildProviderRows);
         rebuildProviderRows();
         page.add(providerGroup);
 
@@ -437,10 +480,11 @@ export default class LyricExPreferences extends ExtensionPreferences {
             if (box)
                 settings.set_string('panel-box', box.id);
         });
-        settings.connect('changed::panel-box', syncPanelBox);
+        watchSetting('panel-box', syncPanelBox);
         displayGroup.add(boxRow);
 
         const positionRow = makeSpinRow(
+            watchSetting,
             settings,
             'panel-position',
             '区域内位置',
@@ -451,6 +495,7 @@ export default class LyricExPreferences extends ExtensionPreferences {
         displayGroup.add(positionRow);
 
         const lyricWidthRow = makeSpinRow(
+            watchSetting,
             settings,
             'panel-lyric-width',
             '歌词固定宽度',
@@ -484,10 +529,11 @@ export default class LyricExPreferences extends ExtensionPreferences {
             if (item)
                 settings.set_string('lyric-align', item.id);
         });
-        settings.connect('changed::lyric-align', syncAlign);
+        watchSetting('lyric-align', syncAlign);
         displayGroup.add(alignRow);
 
         const offsetXRow = makeSpinRow(
+            watchSetting,
             settings,
             'panel-offset-x',
             '横向微调',
@@ -498,6 +544,7 @@ export default class LyricExPreferences extends ExtensionPreferences {
         displayGroup.add(offsetXRow);
 
         const offsetYRow = makeSpinRow(
+            watchSetting,
             settings,
             'panel-offset-y',
             '纵向微调',
@@ -508,6 +555,7 @@ export default class LyricExPreferences extends ExtensionPreferences {
         displayGroup.add(offsetYRow);
 
         const fontRow = makeSpinRow(
+            watchSetting,
             settings,
             'font-size',
             '歌词字号',
@@ -528,6 +576,150 @@ export default class LyricExPreferences extends ExtensionPreferences {
             Gio.SettingsBindFlags.DEFAULT
         );
         displayGroup.add(karaokeRow);
+
+        const translationRow = new Adw.SwitchRow({
+            title: '显示歌词翻译',
+            subtitle: '在线源提供翻译时，卡片歌词页逐行显示，顶栏副行优先显示翻译',
+        });
+        settings.bind(
+            'show-translation',
+            translationRow,
+            'active',
+            Gio.SettingsBindFlags.DEFAULT
+        );
+        displayGroup.add(translationRow);
+
+        const nextPreviewRow = new Adw.SwitchRow({
+            title: '顶栏下一句预览',
+            subtitle: '顶栏副行在当前行没有翻译时显示下一句歌词',
+        });
+        settings.bind(
+            'panel-next-preview',
+            nextPreviewRow,
+            'active',
+            Gio.SettingsBindFlags.DEFAULT
+        );
+        displayGroup.add(nextPreviewRow);
+
+        const autoWidthRow = new Adw.SwitchRow({
+            title: '自适应宽度',
+            subtitle: '歌词条随当前行伸缩（灵动词岛式），上限为固定宽度设置',
+        });
+        settings.bind(
+            'panel-auto-width',
+            autoWidthRow,
+            'active',
+            Gio.SettingsBindFlags.DEFAULT
+        );
+        displayGroup.add(autoWidthRow);
+
+        displayGroup.add(makeSpinRow(
+            watchSetting,
+            settings,
+            'panel-opacity',
+            '顶栏歌词不透明度',
+            '40% 到 100%',
+            40,
+            100
+        ));
+
+        const accentModel = Gtk.StringList.new([
+            '跟随主题强调色',
+            '自定义颜色',
+        ]);
+        const accentRow = new Adw.ComboRow({
+            title: '卡拉OK填充色',
+            model: accentModel,
+        });
+        const customColorRows = [];
+        const syncAccentMode = () => {
+            const custom =
+                settings.get_string('lyric-accent-mode') === 'custom';
+            accentRow.selected = custom ? 1 : 0;
+            for (const row of customColorRows)
+                row.sensitive = custom;
+        };
+        accentRow.connect('notify::selected', () => {
+            settings.set_string(
+                'lyric-accent-mode',
+                accentRow.selected === 1 ? 'custom' : 'theme'
+            );
+        });
+        watchSetting('lyric-accent-mode', syncAccentMode);
+        displayGroup.add(accentRow);
+
+        // Swatch picker: the button shows the current color and opens a
+        // preset palette plus a custom color editor.
+        const colorRow = new Adw.ActionRow({
+            title: '选色卡',
+            subtitle: '为卡拉OK填充挑选颜色',
+        });
+        const colorDialog = new Gtk.ColorDialog({
+            title: '选择填充颜色',
+            with_alpha: false,
+            modal: true,
+        });
+        try {
+            colorDialog.palette =
+                COLOR_SWATCHES.map(hex => rgbaFromHex(hex));
+        } catch (_error) {
+            // Palette marshalling is unavailable; the picker still works
+            // with the custom editor alone.
+        }
+        const colorButton = new Gtk.ColorDialogButton({
+            dialog: colorDialog,
+            valign: Gtk.Align.CENTER,
+        });
+        colorButton.rgba = rgbaFromHex(settings.get_string('lyric-color'));
+        colorButton.connect('notify::rgba', () => {
+            settings.set_string('lyric-color', rgbaToHex(colorButton.rgba));
+        });
+        watchSetting('lyric-color', () => {
+            const rgba = rgbaFromHex(settings.get_string('lyric-color'));
+            if (colorButton.rgba?.to_string() !== rgba.to_string())
+                colorButton.rgba = rgba;
+        });
+        colorRow.add_suffix(colorButton);
+        customColorRows.push(colorRow);
+        displayGroup.add(colorRow);
+
+        const hexRow = new Adw.EntryRow({
+            title: '十六进制颜色',
+            text: settings.get_string('lyric-color'),
+            show_apply_button: true,
+        });
+        hexRow.connect('apply', () => {
+            const value = hexRow.text.trim();
+            if (/^#?[0-9a-fA-F]{6}$/.test(value))
+                settings.set_string(
+                    'lyric-color',
+                    value.startsWith('#') ? value : `#${value}`
+                );
+        });
+        watchSetting('lyric-color', () => {
+            const value = settings.get_string('lyric-color');
+            if (hexRow.text !== value)
+                hexRow.text = value;
+        });
+        customColorRows.push(hexRow);
+        displayGroup.add(hexRow);
+
+        const familyRow = new Adw.EntryRow({
+            title: '歌词字体',
+            text: settings.get_string('lyric-font-family'),
+            show_apply_button: true,
+        });
+        familyRow.connect('apply', () => {
+            settings.set_string('lyric-font-family', familyRow.text.trim());
+        });
+        watchSetting('lyric-font-family', () => {
+            const value = settings.get_string('lyric-font-family');
+            if (familyRow.text !== value)
+                familyRow.text = value;
+        });
+        displayGroup.add(familyRow);
+
+        syncAccentMode();
         page.add(displayGroup);
 
         const cacheGroup = new Adw.PreferencesGroup({
@@ -555,6 +747,11 @@ export default class LyricExPreferences extends ExtensionPreferences {
             '歌词偏移记忆',
             '清除所有歌曲的手动歌词偏移校正记录',
             () => new OffsetStore().clear()
+        ));
+        cacheGroup.add(makeCacheRow(
+            '手动歌词选择记录',
+            '清除“重新匹配”功能保存的按曲目歌词选择',
+            () => new SelectionStore().clear()
         ));
         cacheGroup.add(makeCacheRow(
             '封面图片缓存',

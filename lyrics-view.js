@@ -25,6 +25,8 @@ export const LyricsView = GObject.registerClass({
         this._follow = true;
         this._followResumeId = 0;
         this._karaokeEnabled = false;
+        this._showTranslation = true;
+        this._textStyle = {color: null, fontFamily: null};
 
         this._scrollView = new St.ScrollView({
             style_class: 'lyric-ex-lyrics-scroll',
@@ -75,11 +77,26 @@ export const LyricsView = GObject.registerClass({
                 x_align: Clutter.ActorAlign.FILL,
                 x_expand: true,
             });
+            const box = new St.BoxLayout({
+                orientation: Clutter.Orientation.VERTICAL,
+            });
             const label = new KaraokeLabel('lyric-ex-lyrics-line-text');
             label.setText(line.text);
             label.setAlign('center');
             label.setKaraokeEnabled(this._karaokeEnabled);
-            button.set_child(label);
+            label.setTextStyle(this._textStyle);
+            button._karaokeLabel = label;
+            box.add_child(label);
+            const translation = this._showTranslation
+                ? String(line.trans ?? '') : '';
+            if (translation) {
+                const transLabel = new St.Label({
+                    text: translation,
+                    style_class: 'lyric-ex-lyrics-trans',
+                });
+                box.add_child(transLabel);
+            }
+            button.set_child(box);
             if (this._document.synced) {
                 button.connect('clicked', () =>
                     this.emit('line-activated', line.time)
@@ -92,6 +109,24 @@ export const LyricsView = GObject.registerClass({
         }
     }
 
+    setShowTranslation(enabled) {
+        const value = Boolean(enabled);
+        if (value === this._showTranslation)
+            return;
+        this._showTranslation = value;
+        if (this._document)
+            this.setDocument(this._document);
+    }
+
+    setTextStyle(style) {
+        this._textStyle = {
+            color: style?.color ?? null,
+            fontFamily: style?.fontFamily ?? null,
+        };
+        for (const button of this._lineButtons)
+            button._karaokeLabel?.setTextStyle(this._textStyle);
+    }
+
     setKaraokeEnabled(enabled) {
         const value = Boolean(enabled);
         if (value === this._karaokeEnabled)
@@ -99,18 +134,18 @@ export const LyricsView = GObject.registerClass({
 
         this._karaokeEnabled = value;
         for (const button of this._lineButtons)
-            button.child?.setKaraokeEnabled(value);
+            button._karaokeLabel?.setKaraokeEnabled(value);
     }
 
     setPosition(seconds) {
         if (!this._document?.synced || this._lineButtons.length === 0)
             return;
 
-        const index = this._indexAt(seconds);
+        const index = this._document.getLineIndexAt(seconds);
         if (index !== this._activeIndex) {
             const previous = this._lineButtons[this._activeIndex];
             previous?.remove_style_class_name('lyric-ex-lyrics-line-active');
-            previous?.child?.setProgress(0);
+            previous?._karaokeLabel?.setProgress(0);
 
             this._activeIndex = index;
             const active = this._lineButtons[index];
@@ -122,33 +157,16 @@ export const LyricsView = GObject.registerClass({
         }
 
         const active = this._lineButtons[index];
-        if (active?.child && this._karaokeEnabled) {
+        if (active?._karaokeLabel && this._karaokeEnabled) {
             const start = this._document.lines[index].time;
             const end = this._document.lines[index + 1]?.time ?? start + 10;
             const span = Math.max(0.001, end - start);
             const words = this._document.lines[index].words;
             if (words && words.length > 0)
-                active.child.setWordProgress(words, seconds);
+                active._karaokeLabel.setWordProgress(words, seconds);
             else
-                active.child.setProgress((seconds - start) / span);
+                active._karaokeLabel.setProgress((seconds - start) / span);
         }
-    }
-
-    _indexAt(seconds) {
-        const lines = this._document.lines;
-        let low = 0;
-        let high = lines.length - 1;
-        let result = -1;
-        while (low <= high) {
-            const middle = Math.floor((low + high) / 2);
-            if (lines[middle].time <= seconds) {
-                result = middle;
-                low = middle + 1;
-            } else {
-                high = middle - 1;
-            }
-        }
-        return result;
     }
 
     scrollToActive(smooth = true) {

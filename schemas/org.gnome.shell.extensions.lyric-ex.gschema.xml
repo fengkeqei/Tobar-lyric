@@ -120,6 +120,46 @@
       <summary>逐字卡拉OK高亮</summary>
       <description>当前歌词行按行时长从左到右填充主题色，作用于顶部栏歌词和卡片歌词页；需要带时间轴的歌词。</description>
     </key>
+    <key name="show-translation" type="b">
+      <default>true</default>
+      <summary>显示歌词翻译</summary>
+      <description>在线源提供翻译歌词时，在卡片歌词页各行下方以及顶栏副行显示翻译。</description>
+    </key>
+    <key name="panel-next-preview" type="b">
+      <default>true</default>
+      <summary>顶栏下一句预览</summary>
+      <description>顶栏副行在当前行没有翻译时显示下一句歌词。</description>
+    </key>
+    <key name="panel-auto-width" type="b">
+      <default>false</default>
+      <summary>自适应宽度</summary>
+      <description>顶栏歌词区域随当前行内容伸缩，上限为固定宽度设置；关闭时始终占用固定宽度。</description>
+    </key>
+    <key name="panel-opacity" type="i">
+      <default>100</default>
+      <range min="40" max="100"/>
+      <summary>顶栏歌词不透明度</summary>
+      <description>以百分比调整顶栏歌词区域的整体不透明度。</description>
+    </key>
+    <key name="lyric-accent-mode" type="s">
+      <default>'theme'</default>
+      <choices>
+        <choice value='theme'/>
+        <choice value='custom'/>
+      </choices>
+      <summary>卡拉OK填充色</summary>
+      <description>选择跟随系统主题强调色或使用自定义颜色。</description>
+    </key>
+    <key name="lyric-color" type="s">
+      <default>'#ff7a9e'</default>
+      <summary>自定义填充颜色</summary>
+      <description>卡拉OK填充色选择“自定义”时使用的十六进制颜色。</description>
+    </key>
+    <key name="lyric-font-family" type="s">
+      <default>''</default>
+      <summary>歌词字体</summary>
+      <description>歌词使用的字体家族，留空使用系统默认字体。</description>
+    </key>
     <key name="font-size" type="i">
       <default>13</default>      <range min="9" max="24"/>
       <summary>歌词字号</summary>

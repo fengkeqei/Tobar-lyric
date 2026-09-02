@@ -129,6 +129,7 @@ export class LyricDocument {
             start: line.time,
             end: this.lines[index + 1]?.time ?? line.time + 10,
             words: Array.isArray(line.words) ? line.words : null,
+            trans: line.trans ?? null,
         };
     }
 
@@ -136,8 +137,10 @@ export class LyricDocument {
         return this.getEntryAt(seconds)?.text ?? '';
     }
 
-    static fromLrc(text, source = 'local') {
-        const lines = [];
+    // Parse "[mm:ss.xx]text" lines (metadata tags and offsets included)
+    // into sorted {time, text} entries; shared by main and translation LRC.
+    static parseLrcEntries(text) {
+        const entries = [];
         const metadata = {};
         const rawLines = String(text).replace(/^\uFEFF/, '').split('\n');
         const timestampPattern =
@@ -169,14 +172,46 @@ export class LyricDocument {
                 if (!Number.isFinite(seconds))
                     continue;
 
-                lines.push({
+                entries.push({
                     time: Math.max(0, seconds + offset),
                     text: lyricText,
                 });
             }
         }
 
-        return new LyricDocument(lines, source, true);
+        return entries;
+    }
+
+    // Attach per-line translations from an LRC-format translation track by
+    // nearest timestamp (sources emit both tracks from the same timeline).
+    attachTranslation(text) {
+        const entries = LyricDocument.parseLrcEntries(text)
+            .filter(entry => cleanText(entry.text));
+        if (entries.length === 0)
+            return this;
+
+        for (const line of this.lines) {
+            let best = null;
+            let bestDelta = Infinity;
+            for (const entry of entries) {
+                const delta = Math.abs(entry.time - line.time);
+                if (delta < bestDelta) {
+                    best = entry;
+                    bestDelta = delta;
+                }
+            }
+            if (best && bestDelta <= 0.6)
+                line.trans = best.text;
+        }
+        return this;
+    }
+
+    static fromLrc(text, source = 'local') {
+        return new LyricDocument(
+            LyricDocument.parseLrcEntries(text),
+            source,
+            true
+        );
     }
 
     static fromPlain(text, source = 'online') {
@@ -293,9 +328,12 @@ export async function findLocalLyrics(snapshot, settings) {
         .filter(Boolean);
 
     const candidates = [];
+    // Only probe a sibling .lrc for genuinely local tracks; for remote
+    // URLs (http/smb) it would turn lyric lookup into a network request.
+    const trackPath = trackFile?.get_path?.() ?? '';
     const trackBasename = trackFile?.get_basename?.() ?? '';
     const trackStem = trackBasename.replace(/\.[^.]+$/, '');
-    if (trackFile?.get_parent?.() && trackStem)
+    if (trackPath && trackFile.get_parent() && trackStem)
         candidates.push(trackFile.get_parent().get_child(`${trackStem}.lrc`));
 
     const names = [
@@ -311,12 +349,12 @@ export async function findLocalLyrics(snapshot, settings) {
             ));
     }
 
-    for (const candidate of candidates) {
-        const text = await readFileAsync(candidate);
-        if (!text)
+    const texts = await Promise.all(candidates.map(readFileAsync));
+    for (let i = 0; i < texts.length; i++) {
+        if (!texts[i])
             continue;
 
-        const document = parseLyricsText(text, 'local');
+        const document = parseLyricsText(texts[i], 'local');
         if (document?.lines.length > 0)
             return document;
     }

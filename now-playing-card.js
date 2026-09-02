@@ -7,6 +7,7 @@ import St from 'gi://St';
 import {Slider} from 'resource:///org/gnome/shell/ui/slider.js';
 
 import {LyricsView} from './lyrics-view.js';
+import {providerName} from './online.js';
 
 const US_PER_SECOND = 1_000_000;
 const DIM_OPACITY = 160;
@@ -32,14 +33,14 @@ function cssUrl(path) {
     return `url("${path.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}")`;
 }
 
-function iconButton(iconName, styleClass = 'lyric-ex-card-button') {
+function iconButton(iconName, styleClass = 'lyric-ex-card-button', iconSize = 20) {
     const button = new St.Button({
         style_class: `lyric-ex-control-button ${styleClass}`,
         can_focus: true,
         x_align: Clutter.ActorAlign.CENTER,
         y_align: Clutter.ActorAlign.CENTER,
     });
-    button.set_child(new St.Icon({icon_name: iconName, icon_size: 20}));
+    button.set_child(new St.Icon({icon_name: iconName, icon_size: iconSize}));
     return button;
 }
 
@@ -71,6 +72,8 @@ class NowPlayingCard extends St.BoxLayout {
         this._hasLyrics = false;
         this._karaoke = false;
         this._pollInterval = 0;
+        this._pollTicks = 0;
+        this._lyricsMode = 'view';
         this._lyricOffset = 0;
 
         this._buildHeader();
@@ -149,22 +152,22 @@ class NowPlayingCard extends St.BoxLayout {
             x_align: Clutter.ActorAlign.END,
             y_expand: true,
         });
-        this._lyricsToggleButton = iconButton('pan-down-symbolic');
-        this._lyricsToggleButton.set_child(new St.Icon({
-            icon_name: 'pan-down-symbolic',
-            icon_size: 16,
-        }));
+        this._lyricsToggleButton = iconButton(
+            'pan-down-symbolic',
+            'lyric-ex-card-button',
+            16
+        );
         this._lyricsToggleButton.accessible_name = '展开歌词';
         this._lyricsToggleButton.visible = false;
         this._lyricsToggleButton.connect('clicked', () => {
             this._setLyricsExpanded(!this._lyricsExpanded);
         });
         actions.add_child(this._lyricsToggleButton);
-        this._settingsButton = iconButton('emblem-system-symbolic');
-        this._settingsButton.set_child(new St.Icon({
-            icon_name: 'emblem-system-symbolic',
-            icon_size: 16,
-        }));
+        this._settingsButton = iconButton(
+            'emblem-system-symbolic',
+            'lyric-ex-card-button',
+            16
+        );
         this._settingsButton.accessible_name = '打开设置';
         this._settingsButton.connect('clicked', () => {
             this._callbacks.onOpenPreferences?.();
@@ -324,7 +327,134 @@ class NowPlayingCard extends St.BoxLayout {
         this._offsetBox.add_child(this._offsetDownButton);
         this._offsetBox.add_child(this._offsetLabel);
         this._offsetBox.add_child(this._offsetUpButton);
+        this._sourceLabel = new St.Label({
+            style_class: 'lyric-ex-source-label',
+            text: '',
+            visible: false,
+            y_align: Clutter.ActorAlign.CENTER,
+        });
+        this._offsetBox.add_child(this._sourceLabel);
+        this._rematchButton = new St.Button({
+            style_class: 'lyric-ex-offset-button',
+            can_focus: true,
+            visible: false,
+            accessible_name: '重新匹配歌词',
+        });
+        this._rematchButton.set_child(new St.Label({text: '重新匹配'}));
+        this._rematchButton.connect('clicked', () => this._showPicker());
+        this._offsetBox.add_child(this._rematchButton);
         this.add_child(this._offsetBox);
+
+        // Manual re-match picker: candidates from every enabled provider.
+        this._pickerBox = new St.BoxLayout({
+            style_class: 'lyric-ex-picker',
+            orientation: Clutter.Orientation.VERTICAL,
+            visible: false,
+        });
+        const pickerHeader = new St.BoxLayout({
+            style_class: 'lyric-ex-picker-header',
+        });
+        this._pickerTitle = new St.Label({
+            text: '选择歌词版本',
+            style_class: 'lyric-ex-picker-title',
+            x_expand: true,
+            y_align: Clutter.ActorAlign.CENTER,
+        });
+        pickerHeader.add_child(this._pickerTitle);
+        const restoreButton = new St.Button({
+            style_class: 'lyric-ex-picker-action',
+            label: '恢复自动',
+        });
+        restoreButton.connect('clicked', () => {
+            this._setLyricsMode('view');
+            this._callbacks.onClearSelection?.();
+        });
+        const backButton = new St.Button({
+            style_class: 'lyric-ex-picker-action',
+            label: '返回歌词',
+        });
+        backButton.connect('clicked', () => this._setLyricsMode('view'));
+        pickerHeader.add_child(restoreButton);
+        pickerHeader.add_child(backButton);
+        this._pickerBox.add_child(pickerHeader);
+
+        this._pickerScroll = new St.ScrollView({
+            style_class: 'lyric-ex-picker-scroll',
+            vscrollbar_policy: St.PolicyType.AUTOMATIC,
+            hscrollbar_policy: St.PolicyType.NEVER,
+            overlay_scrollbars: true,
+        });
+        this._pickerList = new St.BoxLayout({
+            orientation: Clutter.Orientation.VERTICAL,
+            style_class: 'lyric-ex-picker-list',
+        });
+        this._pickerScroll.set_child(this._pickerList);
+        this._pickerBox.add_child(this._pickerScroll);
+        this.add_child(this._pickerBox);
+    }
+
+    _showPicker() {
+        this._setLyricsMode('pick');
+        this._pickerList.destroy_all_children();
+        this._pickerTitle.text = '正在搜索候选…';
+        Promise.resolve(this._callbacks.onSearchCandidates?.())
+            .then(candidates => {
+                if (this._lyricsMode !== 'pick')
+                    return;
+                this._pickerTitle.text = '选择歌词版本';
+                this._renderCandidates(candidates ?? []);
+            })
+            .catch(() => {
+                if (this._lyricsMode !== 'pick')
+                    return;
+                this._pickerTitle.text = '搜索候选失败';
+            });
+    }
+
+    _renderCandidates(candidates) {
+        this._pickerList.destroy_all_children();
+        if (candidates.length === 0) {
+            this._pickerList.add_child(new St.Label({
+                text: '没有找到候选',
+                style_class: 'lyric-ex-picker-empty',
+            }));
+            return;
+        }
+
+        for (const candidate of candidates) {
+            const duration = Math.max(0, Math.round(Number(candidate.duration) || 0));
+            const durationText = duration > 0
+                ? ` [${Math.floor(duration / 60)}:${String(duration % 60).padStart(2, '0')}]`
+                : '';
+            const row = new St.Button({
+                style_class: 'lyric-ex-picker-row',
+                can_focus: true,
+                x_align: Clutter.ActorAlign.FILL,
+            });
+            const label = new St.Label({
+                text: `${candidate.title} — ${candidate.artist}` +
+                    `${durationText}（${providerName(candidate.providerId)}）`,
+            });
+            label.clutter_text.set({
+                ellipsize: Pango.EllipsizeMode.END,
+                line_wrap: false,
+            });
+            row.set_child(label);
+            row.connect('clicked', () => {
+                this._setLyricsMode('view');
+                this._callbacks.onPickCandidate?.(candidate);
+            });
+            this._pickerList.add_child(row);
+        }
+    }
+
+    _setLyricsMode(mode) {
+        this._lyricsMode = mode === 'pick' ? 'pick' : 'view';
+        const expanded = this._lyricsExpanded;
+        this._lyricsView.visible = expanded && this._lyricsMode === 'view';
+        this._pickerBox.visible = expanded && this._lyricsMode === 'pick';
+        this._offsetBox.visible =
+            expanded && this._hasLyrics && this._lyricsMode === 'view';
     }
 
     _makeOffsetButton(accessibleName, text, delta) {
@@ -356,6 +486,17 @@ class NowPlayingCard extends St.BoxLayout {
         this._updateTimer();
     }
 
+    setLyricSource(sourceLabel, manual = false) {
+        this._sourceLabel.text = String(sourceLabel ?? '');
+        this._sourceLabel.visible = this._sourceLabel.text !== '';
+        this._rematchButton.visible = this._hasLyrics;
+        this._lyricsManual = Boolean(manual);
+    }
+
+    setLyricTextStyle(style) {
+        this._lyricsView?.setTextStyle(style ?? {});
+    }
+
     setLyricDocument(document) {
         const usable = Boolean(document?.lines?.length);
         this._hasLyrics = usable;
@@ -374,21 +515,23 @@ class NowPlayingCard extends St.BoxLayout {
 
     _setLyricsExpanded(expanded) {
         this._lyricsExpanded = Boolean(expanded);
+        if (!this._lyricsExpanded)
+            this._lyricsMode = 'view';
         this._lyricsView.expanded = this._lyricsExpanded;
+        this._setLyricsMode(this._lyricsMode);
         this._lyricsToggleButton.child.icon_name = this._lyricsExpanded
             ? 'pan-up-symbolic'
             : 'pan-down-symbolic';
         this._lyricsToggleButton.accessible_name = this._lyricsExpanded
             ? '收起歌词'
             : '展开歌词';
-        this._updateOffsetBoxVisibility();
         this._updateTimer();
         if (this._lyricsExpanded)
             this._refreshPosition();
     }
 
     _updateOffsetBoxVisibility() {
-        this._offsetBox.visible = this._lyricsExpanded && this._hasLyrics;
+        this._setLyricsMode(this._lyricsMode);
     }
 
     setState(player, players = []) {
@@ -406,6 +549,11 @@ class NowPlayingCard extends St.BoxLayout {
 
     setActive(active) {
         this._active = active;
+        if (!active && this._lyricsMode === 'pick') {
+            // Closing the menu returns the card to the lyrics view.
+            this._lyricsMode = 'view';
+            this._setLyricsMode('view');
+        }
         this._updateTimer();
         if (active)
             this._refreshPosition();
@@ -634,10 +782,24 @@ class NowPlayingCard extends St.BoxLayout {
         this._remainingLabel.text = `-${formatTime(Math.max(0, length - position))}`;
     }
 
-    _refreshPosition() {
+    _refreshPosition(useEstimate = false) {
         const player = this._player;
         if (!player || !this._active)
             return;
+
+        if (useEstimate) {
+            // Interpolated from the controller's last known position; avoids
+            // a D-Bus round trip on every karaoke tick.
+            const estimated = Math.max(0, Number(
+                this._callbacks.getEstimatedPosition?.() ?? player.position
+            ) || 0);
+            if (player === this._player && !this._dragging) {
+                this._position = estimated;
+                this._updateSlider();
+            }
+            return;
+        }
+
         Promise.resolve(this._callbacks.getPosition?.(player))
             .then(position => {
                 if (player !== this._player || this._dragging)
@@ -662,29 +824,24 @@ class NowPlayingCard extends St.BoxLayout {
             this._pollId = 0;
         }
         this._pollInterval = 0;
+        this._pollTicks = 0;
         if (!wanted)
             return;
 
         this._pollInterval = interval;
-        if (interval === 100) {
-            this._pollId = GLib.timeout_add(
-                GLib.PRIORITY_DEFAULT,
-                interval,
-                () => {
-                    this._refreshPosition();
-                    return GLib.SOURCE_CONTINUE;
-                }
-            );
-        } else {
-            this._pollId = GLib.timeout_add_seconds(
-                GLib.PRIORITY_DEFAULT,
-                1,
-                () => {
-                    this._refreshPosition();
-                    return GLib.SOURCE_CONTINUE;
-                }
-            );
-        }
+        const onTick = () => {
+            this._pollTicks++;
+            // Within the fast path, only every tenth tick (about once per
+            // second) queries the real position over D-Bus; the rest
+            // interpolate locally.
+            const estimate = interval === 100 && this._pollTicks % 10 !== 1;
+            this._refreshPosition(estimate);
+            return GLib.SOURCE_CONTINUE;
+        };
+        if (interval === 100)
+            this._pollId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, interval, onTick);
+        else
+            this._pollId = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 1, onTick);
     }
 
     _cleanup() {

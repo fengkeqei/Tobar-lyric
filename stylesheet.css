@@ -14,6 +14,13 @@
     font-size: 0.9em;
 }
 
+.lyric-ex-subline {
+    min-width: 0;
+    padding: 0 2px;
+    font-size: 0.72em;
+    opacity: 0.62;
+}
+
 .lyric-ex-controls {
     min-width: 0;
     padding: 0 2px;
@@ -243,4 +250,64 @@
 .lyric-ex-offset-label {
     opacity: 0.72;
     font-size: 0.85em;
+}
+
+.lyric-ex-source-label {
+    font-size: 0.78em;
+    opacity: 0.6;
+}
+
+.lyric-ex-picker {
+    spacing: 6px;
+}
+
+.lyric-ex-picker-header {
+    spacing: 6px;
+}
+
+.lyric-ex-picker-title {
+    font-weight: 700;
+    padding-left: 2px;
+}
+
+.lyric-ex-picker-action {
+    padding: 3px 10px;
+    border-radius: 6px;
+    background-color: rgba(128, 128, 128, 0.16);
+}
+
+.lyric-ex-picker-action:hover,
+.lyric-ex-picker-action:focus {
+    background-color: rgba(128, 128, 128, 0.28);
+}
+
+.lyric-ex-picker-scroll {
+    max-height: 240px;
+    padding: 2px 4px;
+}
+
+.lyric-ex-picker-list {
+    spacing: 2px;
+}
+
+.lyric-ex-picker-row {
+    padding: 5px 8px;
+    border-radius: 6px;
+    background-color: rgba(128, 128, 128, 0.1);
+}
+
+.lyric-ex-picker-row:hover,
+.lyric-ex-picker-row:focus {
+    background-color: rgba(128, 128, 128, 0.22);
+}
+
+.lyric-ex-picker-empty {
+    opacity: 0.7;
+    padding: 6px 2px;
+}
+
+.lyric-ex-lyrics-trans {
+    font-size: 0.82em;
+    opacity: 0.62;
+    padding: 0 8px 2px;
 }

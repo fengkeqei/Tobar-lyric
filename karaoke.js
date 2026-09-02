@@ -127,7 +127,8 @@ class KaraokeLabel extends St.Widget {
         const chars = [...this._text];
         const edges = [0];
         // Measure each character's advance width via a scratch label with
-        // identical styling; widths accumulate into pixel edges.
+        // identical styling; it must live under this (mapped) actor while
+        // measuring, or St logs theme-node warnings for offstage widgets.
         const scratch = new St.Label({
             style_class: 'lyric-ex-karaoke-fill',
         });
@@ -138,6 +139,7 @@ class KaraokeLabel extends St.Widget {
         const style = this._fillLabel.style;
         if (style)
             scratch.set_style(style);
+        this.add_child(scratch);
         let acc = 0;
         for (const char of chars) {
             scratch.text = char;
@@ -145,6 +147,7 @@ class KaraokeLabel extends St.Widget {
             acc += Math.ceil(Number(natural)) || 0;
             edges.push(acc);
         }
+        this.remove_child(scratch);
         scratch.destroy();
         // Normalize against the full-string width to absorb hinting
         // differences between per-char and whole-string measurement.
@@ -157,9 +160,23 @@ class KaraokeLabel extends St.Widget {
     }
 
     setFontSize(size) {
-        const style = `font-size: ${size}px;`;
+        this.setTextStyle({fontSize: size});
+    }
+
+    // Inline styling for both layers: font size/family apply to base and
+    // fill, the custom color only to the fill layer (the base stays dimmed
+    // and neutral per the stylesheet).
+    setTextStyle({fontSize = null, fontFamily = null, color = null} = {}) {
+        let style = '';
+        if (fontSize)
+            style += `font-size: ${fontSize}px;`;
+        if (fontFamily)
+            style += `font-family: '${String(fontFamily).replace(/'/g, '')}';`;
+
         this._baseLabel.set_style(style);
-        this._fillLabel.set_style(style);
+        this._fillLabel.set_style(
+            color ? `${style}color: ${color};` : style
+        );
         this._textWidth = 0;
         this._charEdges = null;
         this._applyProgress();

@@ -193,10 +193,6 @@ export class MprisController {
         this._emitCurrent();
     }
 
-    getPlayers() {
-        return this._getSnapshots();
-    }
-
     selectPlayer(busName) {
         const player = this._getSnapshots().find(
             snapshot => snapshot.busName === busName && this._isAllowed(snapshot)
@@ -205,13 +201,6 @@ export class MprisController {
             return;
 
         this._selectedBusName = busName;
-        this._emitCurrent();
-    }
-
-    clearSelectedPlayer() {
-        if (!this._selectedBusName)
-            return;
-        this._selectedBusName = null;
         this._emitCurrent();
     }
 

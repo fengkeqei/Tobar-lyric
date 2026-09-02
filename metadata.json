@@ -2,7 +2,7 @@
   "uuid": "lyric-ex@local",
   "name": "Lyric Ex",
   "description": "显示当前 MPRIS 播放器歌词，优先读取本地 LRC，找不到时回退到在线歌词。",
-  "version": 21,
+  "version": 25,
   "shell-version": [
     "50"
   ],

@@ -1,6 +1,7 @@
 import Clutter from 'gi://Clutter';
 import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
+import Pango from 'gi://Pango';
 import St from 'gi://St';
 
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
@@ -9,10 +10,11 @@ import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import {ArtCache} from './art-cache.js';
 import {KaraokeLabel} from './karaoke.js';
 import {findEmbeddedLyrics, findLocalLyrics} from './lyrics.js';
-import {OnlineLyricsFetcher} from './online.js';
+import {fetchCandidateLyrics, OnlineLyricsFetcher, providerName, searchAllProviders} from './online.js';
 import {MprisController} from './mpris.js';
 import {NowPlayingCard} from './now-playing-card.js';
 import {OffsetStore} from './offset-store.js';
+import {SelectionStore} from './selection-store.js';
 
 export class LyricIndicator extends PanelMenu.Button {
     static {
@@ -32,14 +34,23 @@ export class LyricIndicator extends PanelMenu.Button {
         this._onlineFetcher = null;
         this._requestId = 0;
         this._lyricsTrackKey = null;
+        this._lyricsSource = null;
+        this._lyricsManual = false;
+        this._selectionStore = new SelectionStore();
         this._tickId = 0;
         this._hovered = false;
         this._currentLine = '';
+        this._subCurrent = '';
         this._marqueeToken = 0;
         this._marqueeDelayId = 0;
         this._marqueePauseId = 0;
+        this._autoWidthDelayId = 0;
         this._hideControlsId = 0;
         this._controlsEnabled = true;
+        this._showTranslation = true;
+        this._panelNextPreview = true;
+        this._autoWidth = false;
+        this._lyricMaxWidth = 400;
         this._offsetStore = new OffsetStore();
 
         this._surface = new St.Widget({
@@ -56,16 +67,31 @@ export class LyricIndicator extends PanelMenu.Button {
         this._surface.add_child(this._box);
         this.visible = false;
 
-        this._viewport = new St.Widget({
+        // Vertical stack: current line on top, translation or next-line
+        // preview (Lyricify-style double-line mode) underneath.
+        this._viewport = new St.BoxLayout({
             style_class: 'lyric-ex-viewport',
             clip_to_allocation: true,
-            layout_manager: new Clutter.BinLayout(),
+            orientation: Clutter.Orientation.VERTICAL,
             x_expand: true,
         });
         this._box.add_child(this._viewport);
 
         this._label = new KaraokeLabel('lyric-ex-label');
+        this._label.x_expand = true;
         this._viewport.add_child(this._label);
+
+        this._subLabel = new St.Label({
+            style_class: 'lyric-ex-subline',
+            text: '',
+            visible: false,
+            x_expand: true,
+        });
+        this._subLabel.clutter_text.set({
+            ellipsize: Pango.EllipsizeMode.END,
+            line_wrap: false,
+        });
+        this._viewport.add_child(this._subLabel);
 
         this._controls = new St.Widget({
             style_class: 'lyric-ex-controls',
@@ -123,7 +149,19 @@ export class LyricIndicator extends PanelMenu.Button {
         this._settingsChangedIds = [
             this._settings.connect(
                 'changed::font-size',
-                () => this._applyFontSize()
+                () => this._applyTextStyle()
+            ),
+            this._settings.connect(
+                'changed::lyric-font-family',
+                () => this._applyTextStyle()
+            ),
+            this._settings.connect(
+                'changed::lyric-accent-mode',
+                () => this._applyTextStyle()
+            ),
+            this._settings.connect(
+                'changed::lyric-color',
+                () => this._applyTextStyle()
             ),
             this._settings.connect(
                 'changed::karaoke-highlight',
@@ -138,8 +176,20 @@ export class LyricIndicator extends PanelMenu.Button {
                 () => this._applyPanelOffset()
             ),
             this._settings.connect(
+                'changed::panel-opacity',
+                () => this._applyPanelOpacity()
+            ),
+            this._settings.connect(
                 'changed::enable-controls',
                 () => this._applyControlsEnabled()
+            ),
+            this._settings.connect(
+                'changed::show-translation',
+                () => this._applySubLineSettings()
+            ),
+            this._settings.connect(
+                'changed::panel-next-preview',
+                () => this._applySubLineSettings()
             ),
             this._settings.connect(
                 'changed::online-providers',
@@ -178,16 +228,22 @@ export class LyricIndicator extends PanelMenu.Button {
                 () => this._applyLyricWidth()
             ),
             this._settings.connect(
+                'changed::panel-auto-width',
+                () => this._applyLyricWidth()
+            ),
+            this._settings.connect(
                 'changed::lyric-align',
                 () => this._applyLyricAlign()
             ),
         ];
-        this._applyFontSize();
+        this._applyTextStyle();
         this._applyLyricWidth();
         this._applyLyricAlign();
         this._applyPanelOffset();
+        this._applyPanelOpacity();
         this._applyControlsEnabled();
         this._applyKaraoke();
+        this._applySubLineSettings();
 
         this.connect('enter-event', () => this._setHovered(true));
         this.connect('leave-event', () => this._setHovered(false));
@@ -217,7 +273,11 @@ export class LyricIndicator extends PanelMenu.Button {
             onLoop: () => this._cycleLoop(),
             onSelectPlayer: busName => this._controller.selectPlayer(busName),
             onOffsetDelta: delta => this._adjustLyricOffset(delta),
+            onSearchCandidates: () => this._searchCandidates(),
+            onPickCandidate: candidate => this._pickCandidate(candidate),
+            onClearSelection: () => this._clearSelection(),
             getPosition: player => this._controller.getPositionMicros(player),
+            getEstimatedPosition: () => this._controller.getCurrentPositionMicros(),
         });
         // Let PopupMenu keep one native anchor for both open and close.
         this.menu.sourceActor = this._box;
@@ -264,6 +324,7 @@ export class LyricIndicator extends PanelMenu.Button {
     destroy() {
         this._requestId++;
         this._cancelMarquee();
+        this._cancelAutoWidth();
         this._cancelControlsHide();
 
         if (this._onlineFetcher)
@@ -316,9 +377,21 @@ export class LyricIndicator extends PanelMenu.Button {
         return button;
     }
 
-    _applyFontSize() {
-        const size = this._settings.get_int('font-size');
-        this._label.setFontSize(size);
+    _applyTextStyle() {
+        const customColor =
+            this._settings.get_string('lyric-accent-mode') === 'custom'
+                ? this._settings.get_string('lyric-color')
+                : null;
+        const style = {
+            fontSize: this._settings.get_int('font-size'),
+            fontFamily: this._settings.get_string('lyric-font-family') || null,
+            color: customColor || null,
+        };
+        this._label.setTextStyle(style);
+        this._card?.setLyricTextStyle({
+            color: style.color,
+            fontFamily: style.fontFamily,
+        });
     }
 
     _applyKaraoke() {
@@ -329,24 +402,59 @@ export class LyricIndicator extends PanelMenu.Button {
     }
 
     _applyLyricWidth() {
-        const width = Math.max(
+        this._lyricMaxWidth = Math.max(
             160,
             Math.min(600, this._settings.get_int('panel-lyric-width'))
         );
-        this._box.style =
-            `width: ${width}px; min-width: ${width}px; max-width: ${width}px;`;
+        this._autoWidth = this._settings.get_boolean('panel-auto-width');
+        if (this._autoWidth) {
+            // The island shrink-wraps to the current line; the setting only
+            // caps it.
+            this._box.style = `min-width: 0; max-width: ${this._lyricMaxWidth}px;`;
+            this._label.width = -1;
+            this._cancelMarquee();
+        } else {
+            this._box.style =
+                `width: ${this._lyricMaxWidth}px; ` +
+                `min-width: ${this._lyricMaxWidth}px; ` +
+                `max-width: ${this._lyricMaxWidth}px;`;
+        }
+        this._resizeBoxForLine();
     }
 
     _applyLyricAlign() {
         const value = this._settings.get_string('lyric-align');
-        this._label.setAlign(['start', 'center', 'end'].includes(value)
+        const align = ['start', 'center', 'end'].includes(value)
             ? value
-            : 'start');
+            : 'start';
+        this._label.setAlign(align);
+        this._subLabel.x_align = align === 'center'
+            ? Clutter.ActorAlign.CENTER
+            : align === 'end'
+                ? Clutter.ActorAlign.END
+                : Clutter.ActorAlign.FILL;
     }
 
     _applyPanelOffset() {
         this.translation_x = this._settings.get_int('panel-offset-x');
         this.translation_y = this._settings.get_int('panel-offset-y');
+    }
+
+    _applyPanelOpacity() {
+        const percent = Math.max(
+            40,
+            Math.min(100, this._settings.get_int('panel-opacity'))
+        );
+        this._surface.opacity = Math.round(percent * 255 / 100);
+    }
+
+    _applySubLineSettings() {
+        this._showTranslation = this._settings.get_boolean('show-translation');
+        this._panelNextPreview =
+            this._settings.get_boolean('panel-next-preview');
+        this._subCurrent = null;
+        if (this._snapshot && this._document)
+            this._updateLyricLine(true);
     }
 
     _applyControlsEnabled() {
@@ -483,11 +591,11 @@ export class LyricIndicator extends PanelMenu.Button {
         else
             this._stopTick();
 
-        this._previousButton.opacity = snapshot?.canGoPrevious ? 255 : 110;
-        this._nextButton.opacity = snapshot?.canGoNext ? 255 : 110;
-        this._playPauseButton.opacity = snapshot?.canPlay ? 255 : 110;
+        this._previousButton.opacity = snapshot.canGoPrevious ? 255 : 110;
+        this._nextButton.opacity = snapshot.canGoNext ? 255 : 110;
+        this._playPauseButton.opacity = snapshot.canPlay ? 255 : 110;
 
-        const isPlaying = snapshot?.status === 'Playing';
+        const isPlaying = snapshot.status === 'Playing';
         this._playPauseButton._icon.icon_name = isPlaying
             ? 'media-playback-pause-symbolic'
             : 'media-playback-start-symbolic';
@@ -505,14 +613,20 @@ export class LyricIndicator extends PanelMenu.Button {
         this._snapshot = null;
         this._lyricsTrackKey = null;
         this._document = null;
+        this._lyricsSource = null;
+        this._lyricsManual = false;
         this._card?.setLyricDocument(null);
         this._currentLine = '';
+        this._subCurrent = '';
+        this._subLabel.text = '';
+        this._subLabel.visible = false;
         this._label.text = '';
         this._controls.visible = false;
         this._viewport.visible = true;
         this._hovered = false;
         this._cancelControlsHide();
         this._cancelMarquee();
+        this._cancelAutoWidth();
 
         if (this._onlineFetcher)
             this._onlineFetcher.abort();
@@ -543,9 +657,29 @@ export class LyricIndicator extends PanelMenu.Button {
             .filter(providerId => !disabledProviders.has(providerId));
 
         this._document = null;
+        this._lyricsSource = null;
+        this._subCurrent = null;
+        this._subLabel.text = '';
+        this._subLabel.visible = false;
         if (this._onlineFetcher)
             this._onlineFetcher.abort();
         this._onlineFetcher = null;
+
+        // A manually matched candidate (歌词纠错) overrides everything else.
+        const selection = this._selectionStore.get(
+            snapshot.title,
+            snapshot.artist
+        );
+        this._lyricsManual = Boolean(selection);
+        if (selection) {
+            const manual = await fetchCandidateLyrics(selection, snapshot);
+            if (requestId !== this._requestId)
+                return;
+            if (manual) {
+                this._setDocument(manual, selection.providerId);
+                return;
+            }
+        }
 
         const local = findEmbeddedLyrics(snapshot) ??
             await findLocalLyrics(snapshot, this._settings);
@@ -553,7 +687,7 @@ export class LyricIndicator extends PanelMenu.Button {
             return;
 
         if (preferLocal && local) {
-            this._setDocument(local);
+            this._setDocument(local, 'local');
             return;
         }
 
@@ -562,10 +696,10 @@ export class LyricIndicator extends PanelMenu.Button {
             this._onlineFetcher = new OnlineLyricsFetcher(
                 snapshot,
                 providerIds,
-                document => {
+                (document, providerId) => {
                     if (requestId !== this._requestId)
                         return;
-                    this._setDocument(document);
+                    this._setDocument(document, providerId);
                 },
                 providerId => {
                     if (requestId !== this._requestId)
@@ -573,7 +707,7 @@ export class LyricIndicator extends PanelMenu.Button {
 
                     this._onlineFetcher = null;
                     if (!providerId && local)
-                        this._setDocument(local);
+                        this._setDocument(local, 'local');
                     else if (!providerId)
                         this._setLyricText('未找到歌词');
                 }
@@ -582,16 +716,77 @@ export class LyricIndicator extends PanelMenu.Button {
         }
 
         if (local)
-            this._setDocument(local);
+            this._setDocument(local, 'local');
         else
             this._setLyricText('未找到歌词');
     }
 
-    _setDocument(document) {
+    _setDocument(document, source = null) {
         this._document = document;
+        if (source)
+            this._lyricsSource = source;
         this._card?.setLyricDocument(document);
         this._card?.setLyricOffset(this._getLyricOffset());
+        this._card?.setLyricSource(this._sourceLabel(), this._lyricsManual);
         this._updateLyricLine(true);
+    }
+
+    _sourceLabel() {
+        if (!this._lyricsSource)
+            return '';
+        const base = this._lyricsSource === 'embedded'
+            ? '内嵌歌词'
+            : this._lyricsSource === 'local'
+                ? '本地歌词'
+                : providerName(this._lyricsSource);
+        return this._lyricsManual ? `手动选择 · ${base}` : base;
+    }
+
+    _searchCandidates() {
+        if (!this._snapshot)
+            return Promise.resolve([]);
+
+        const disabledProviders = new Set(
+            this._settings.get_strv('online-disabled-providers')
+        );
+        const providerIds = this._settings
+            .get_strv('online-providers')
+            .filter(providerId => !disabledProviders.has(providerId));
+        return searchAllProviders(this._snapshot, providerIds);
+    }
+
+    async _pickCandidate(candidate) {
+        if (!candidate || !this._snapshot)
+            return;
+
+        const requestId = ++this._requestId;
+        if (this._onlineFetcher) {
+            this._onlineFetcher.abort();
+            this._onlineFetcher = null;
+        }
+        this._lyricsManual = true;
+        this._selectionStore.set(
+            this._snapshot.title,
+            this._snapshot.artist,
+            candidate
+        );
+        this._setLyricText('获取歌词…');
+
+        const document = await fetchCandidateLyrics(candidate, this._snapshot);
+        if (requestId !== this._requestId)
+            return;
+        if (document)
+            this._setDocument(document, candidate.providerId);
+        else
+            this._setLyricText('匹配歌词失败');
+    }
+
+    _clearSelection() {
+        if (!this._snapshot)
+            return;
+        this._selectionStore.set(this._snapshot.title, this._snapshot.artist, null);
+        this._lyricsManual = false;
+        this._loadLyrics(this._snapshot, true);
     }
 
     _getLyricOffset() {
@@ -627,7 +822,26 @@ export class LyricIndicator extends PanelMenu.Button {
         }
 
         this._setLyricText(line);
+        this._updateSubLine(entry);
         this._updateKaraokeProgress(entry, position);
+    }
+
+    // Second row: the current line's translation when available, otherwise
+    // a preview of the next line (Lyricify's double-line taskbar mode).
+    _updateSubLine(entry) {
+        let text = '';
+        if (this._showTranslation && entry?.trans) {
+            text = entry.trans;
+        } else if (this._panelNextPreview && this._document &&
+                   entry && entry.index >= 0) {
+            text = this._document.lines[entry.index + 1]?.text ?? '';
+        }
+
+        if (text === this._subCurrent)
+            return;
+        this._subCurrent = text;
+        this._subLabel.text = text;
+        this._subLabel.visible = text !== '';
     }
 
     _updateKaraokeProgress(entry, position) {
@@ -651,6 +865,8 @@ export class LyricIndicator extends PanelMenu.Button {
         this._currentLine = value;
         this._cancelMarquee();
         this._label.setText(value);
+        if (this._autoWidth)
+            this._label.width = -1;
         if (!value)
             return;
 
@@ -662,7 +878,57 @@ export class LyricIndicator extends PanelMenu.Button {
             duration: 180,
             mode: Clutter.AnimationMode.EASE_OUT_QUAD,
         });
+        if (this._autoWidth)
+            this._scheduleAutoWidth();
         this._scheduleMarquee();
+    }
+
+    // Dynamic-island sizing: ease the fixed-width slab down/up to hug the
+    // current line, capped at the configured maximum width.
+    _cancelAutoWidth() {
+        if (!this._autoWidthDelayId)
+            return;
+
+        GLib.source_remove(this._autoWidthDelayId);
+        this._autoWidthDelayId = 0;
+    }
+
+    _scheduleAutoWidth() {
+        this._cancelAutoWidth();
+        const token = this._marqueeToken;
+        this._autoWidthDelayId = GLib.timeout_add(
+            GLib.PRIORITY_DEFAULT,
+            60,
+            () => {
+                this._autoWidthDelayId = 0;
+                if (token !== this._marqueeToken)
+                    return GLib.SOURCE_REMOVE;
+
+                this._resizeBoxForLine();
+                return GLib.SOURCE_REMOVE;
+            }
+        );
+    }
+
+    _resizeBoxForLine() {
+        if (!this._autoWidth)
+            return;
+
+        const natural = this._currentLine
+            ? this._label.getNaturalWidth()
+            : 0;
+        const target = Math.min(
+            this._lyricMaxWidth,
+            Math.max(natural + 18, 60)
+        );
+        if (!Number.isFinite(target) || Math.abs(target - this._box.width) < 2)
+            return;
+
+        this._box.ease({
+            width: target,
+            duration: 240,
+            mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+        });
     }
 
     _cancelMarquee() {
@@ -709,6 +975,11 @@ export class LyricIndicator extends PanelMenu.Button {
                 }
                 this._label.width = Math.max(textWidth, viewportWidth);
                 const overflow = Math.max(textWidth - viewportWidth, 0);
+                // In auto-width mode a shorter line fits the island, so the
+                // label never needs to scroll.
+                if (this._autoWidth &&
+                    this._box.width < this._lyricMaxWidth - 2)
+                    return GLib.SOURCE_REMOVE;
                 if (!Number.isFinite(overflow) || overflow <= 2)
                     return GLib.SOURCE_REMOVE;
 
